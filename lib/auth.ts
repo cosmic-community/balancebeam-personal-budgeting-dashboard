@@ -1,41 +1,47 @@
 import { SignJWT, jwtVerify } from 'jose'
+import bcrypt from 'bcrypt'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-key-for-development'
-)
+const secret = new TextEncoder().encode(process.env.JWT_SECRET)
 
-export async function signJWT(payload: JWTPayload): Promise<string> {
-  return await new SignJWT(payload)
+export async function createJWT(payload: JWTPayload): Promise<string> {
+  return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('24h')
-    .sign(JWT_SECRET)
+    .sign(secret)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
-    console.error('JWT verification failed:', error)
     return null
   }
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12
+  return bcrypt.hash(password, saltRounds)
+}
+
+export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword)
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
-  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
   
-  // Handle cookie format (for SSR)
+  // Handle cookie format
   if (authHeader.includes('auth-token=')) {
-    const match = authHeader.match(/auth-token=([^;]+)/)
-    return match ? match[1] : null
+    const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
+    return tokenMatch ? tokenMatch[1] : null
   }
   
-  return authHeader
+  return null
 }
