@@ -1,21 +1,12 @@
 import jwt from 'jsonwebtoken'
-import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = process.env.JWT_SECRET
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required')
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
 
-export function createJWT(payload: { userId: string; email: string }): string {
-  return jwt.sign(
-    {
-      userId: payload.userId,
-      email: payload.email
-    },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  )
+export function createJWT(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
+  return jwt.sign(payload, JWT_SECRET, { 
+    expiresIn: '7d' // Token expires in 7 days
+  })
 }
 
 export function verifyJWT(token: string): JWTPayload | null {
@@ -28,22 +19,19 @@ export function verifyJWT(token: string): JWTPayload | null {
   }
 }
 
-export function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
-}
-
-export function comparePassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash)
-}
-
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
-  // Handle "Bearer TOKEN" format
+  // Handle "Bearer <token>" format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
   
-  // Handle direct token
+  // Handle cookie format "auth-token=<token>"
+  if (authHeader.includes('auth-token=')) {
+    const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
+    return tokenMatch ? tokenMatch[1] : null
+  }
+  
   return authHeader
 }
