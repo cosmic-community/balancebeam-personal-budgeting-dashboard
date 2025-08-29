@@ -5,7 +5,6 @@ import { cosmic, hasStatus } from '@/lib/cosmic'
 import { Transaction, Category, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import TransactionsList from '@/components/TransactionsList'
-import CategoryManager from '@/components/CategoryManager'
 
 async function getTransactionsData(userId: string) {
   try {
@@ -16,7 +15,7 @@ async function getTransactionsData(userId: string) {
     })
     const user = userResponse.object as User
 
-    // Get all transactions for user with category data
+    // Get transactions with category data
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',
@@ -27,14 +26,14 @@ async function getTransactionsData(userId: string) {
     
     const transactions = transactionsResponse.objects as Transaction[]
 
-    // Get all categories for user
+    // Get categories
     const categoriesResponse = await cosmic.objects
       .find({ 
         type: 'categories',
         'metadata.user': userId 
       })
       .props(['id', 'title', 'slug', 'metadata'])
-    
+
     const categories = categoriesResponse.objects as Category[]
 
     return {
@@ -94,12 +93,9 @@ export default async function TransactionsPage() {
           </div>
         </div>
 
-        {/* Categories Management */}
-        <CategoryManager categories={data.categories} />
-
-        {/* Transactions List */}
+        {/* Transactions List Component */}
         <TransactionsList 
-          transactions={data.transactions} 
+          transactions={data.transactions}
           categories={data.categories}
           userId={payload.userId}
         />

@@ -84,11 +84,13 @@ export interface RegisterRequest {
   confirmPassword: string;
 }
 
+// Fixed JWT payload interface to be compatible with jose library
 export interface JWTPayload {
   userId: string;
   email: string;
   iat?: number;
   exp?: number;
+  [key: string]: any; // Index signature for jose compatibility
 }
 
 // Dashboard data types
@@ -128,6 +130,13 @@ export interface CategoryFormData {
   name: string;
   color: string;
   type: CategoryType;
+}
+
+// Component props interfaces
+export interface TransactionsListProps {
+  transactions: Transaction[];
+  categories: Category[];
+  userId: string; // Added missing userId property
 }
 
 // Type guards for runtime validation

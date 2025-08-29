@@ -1,44 +1,29 @@
 import { SignJWT, jwtVerify } from 'jose'
-import { JWTPayload } from '@/types'
 import bcrypt from 'bcryptjs'
+import { JWTPayload } from '@/types'
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-key')
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-key-for-development')
 
 export async function createJWT(payload: JWTPayload): Promise<string> {
-  return await new SignJWT(payload as any) // Cast to any to resolve type conflict with jose
+  return await new SignJWT(payload as Record<string, any>)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime('7d')
     .sign(secret)
-}
-
-export async function signJWT(payload: JWTPayload): Promise<string> {
-  return createJWT(payload)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret)
-    
-    // Ensure the payload has the required properties
-    if (typeof payload.userId === 'string' && typeof payload.email === 'string') {
-      return {
-        userId: payload.userId,
-        email: payload.email,
-        iat: payload.iat,
-        exp: payload.exp
-      }
-    }
-    
-    return null
+    return payload as JWTPayload
   } catch (error) {
+    console.error('JWT verification failed:', error)
     return null
   }
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  const saltRounds = 12
-  return await bcrypt.hash(password, saltRounds)
+  return await bcrypt.hash(password, 12)
 }
 
 export async function comparePassword(password: string, hash: string): Promise<boolean> {
@@ -49,7 +34,7 @@ export function extractTokenFromHeader(authHeader: string | null): string | null
   if (!authHeader) return null
   
   if (authHeader.startsWith('Bearer ')) {
-    return authHeader.substring(7)
+    return authHeader.slice(7)
   }
   
   return null
