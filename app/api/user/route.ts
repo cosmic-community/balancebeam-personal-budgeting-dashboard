@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cosmic } from '@/lib/cosmic'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 
-export async function PUT(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // Verify authentication
     const authHeader = request.headers.get('authorization')
@@ -23,33 +23,27 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    const body = await request.json()
-    const { full_name, dark_mode } = body
+    // Get user data
+    const userResponse = await cosmic.objects.findOne({
+      type: 'users',
+      id: payload.userId
+    })
 
-    // Build update object with only provided fields
-    const updateData: any = {}
+    const user = userResponse.object
+
+    // Return user data without password hash
+    const { password_hash, ...userData } = user.metadata
     
-    if (full_name) {
-      updateData.title = full_name
-      updateData['metadata.full_name'] = full_name
-    }
-    if (dark_mode !== undefined) {
-      updateData['metadata.dark_mode'] = dark_mode
-    }
-
-    // Update user
-    const updatedUser = await cosmic.objects.updateOne(payload.userId, updateData)
-
     return NextResponse.json({ 
       user: {
-        id: updatedUser.object.id,
-        email: updatedUser.object.metadata.email,
-        full_name: updatedUser.object.metadata.full_name,
-        dark_mode: updatedUser.object.metadata.dark_mode || false
+        id: user.id,
+        email: userData.email,
+        full_name: userData.full_name,
+        dark_mode: userData.dark_mode || false
       }
     })
   } catch (error) {
-    console.error('User update error:', error)
+    console.error('User fetch error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

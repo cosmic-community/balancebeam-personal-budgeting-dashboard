@@ -1,15 +1,13 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { AuthUser, LoginRequest, RegisterRequest } from '@/types'
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import { AuthUser } from '@/types'
 
 interface AuthContextType {
   user: AuthUser | null
-  login: (data: LoginRequest) => Promise<void>
-  register: (data: RegisterRequest) => Promise<void>
+  login: (token: string) => void
   logout: () => void
-  isLoading: boolean
+  loading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -22,109 +20,55 @@ export function useAuth() {
   return context
 }
 
-interface AuthProviderProps {
-  children: ReactNode
-}
-
-export function AuthProvider({ children }: AuthProviderProps) {
+export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const router = useRouter()
-  const pathname = usePathname()
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is logged in on app start
-    const token = localStorage.getItem('auth-token')
-    if (token) {
-      // In a real app, you might want to verify the token with the server
-      // For now, we'll just check if it exists
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        if (payload.exp * 1000 > Date.now()) {
-          // Token is still valid, get user data from API or storage
-          // For simplicity, we'll store user data in localStorage
-          const userData = localStorage.getItem('user-data')
-          if (userData) {
-            setUser(JSON.parse(userData))
-          }
-        } else {
-          localStorage.removeItem('auth-token')
-          localStorage.removeItem('user-data')
-        }
-      } catch (error) {
-        localStorage.removeItem('auth-token')
-        localStorage.removeItem('user-data')
-      }
-    }
-    setIsLoading(false)
+    checkAuth()
   }, [])
 
-  const login = async (data: LoginRequest) => {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || 'Login failed')
-    }
-
-    const result = await response.json()
-    localStorage.setItem('auth-token', result.token)
-    localStorage.setItem('user-data', JSON.stringify(result.user))
-    setUser(result.user)
-    router.push('/dashboard')
-  }
-
-  const register = async (data: RegisterRequest) => {
-    const response = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || 'Registration failed')
-    }
-
-    const result = await response.json()
-    localStorage.setItem('auth-token', result.token)
-    localStorage.setItem('user-data', JSON.stringify(result.user))
-    setUser(result.user)
-    router.push('/dashboard')
-  }
-
-  const logout = async () => {
+  const checkAuth = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' })
+      const token = localStorage.getItem('auth-token')
+      if (!token) {
+        setLoading(false)
+        return
+      }
+
+      const response = await fetch('/api/user', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setUser(data.user)
+      } else {
+        // Invalid token, remove it
+        localStorage.removeItem('auth-token')
+      }
     } catch (error) {
-      console.error('Logout error:', error)
+      console.error('Auth check failed:', error)
+      localStorage.removeItem('auth-token')
     }
     
-    localStorage.removeItem('auth-token')
-    localStorage.removeItem('user-data')
-    setUser(null)
-    router.push('/login')
+    setLoading(false)
   }
 
-  // Redirect logic
-  useEffect(() => {
-    if (!isLoading) {
-      const isPublicPath = ['/', '/login', '/signup'].includes(pathname)
-      
-      if (!user && !isPublicPath) {
-        router.push('/login')
-      } else if (user && (pathname === '/login' || pathname === '/signup')) {
-        router.push('/dashboard')
-      }
-    }
-  }, [user, pathname, isLoading, router])
+  const login = (token: string) => {
+    localStorage.setItem('auth-token', token)
+    checkAuth() // Fetch user data
+  }
+
+  const logout = () => {
+    localStorage.removeItem('auth-token')
+    setUser(null)
+  }
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   )

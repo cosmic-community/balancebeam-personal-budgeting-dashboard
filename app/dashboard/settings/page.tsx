@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { User, Category } from '@/types'
+import { Category, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import SettingsForm from '@/components/SettingsForm'
 import CategoryManager from '@/components/CategoryManager'
@@ -46,9 +46,9 @@ export default async function SettingsPage() {
   const authHeader = headersList.get('authorization') || headersList.get('cookie')
   
   // Extract token from cookie if present
-  let token = extractTokenFromHeader(authHeader)
+  let token: string | null = extractTokenFromHeader(authHeader)
   if (!token && authHeader?.includes('auth-token=')) {
-    token = authHeader.split('auth-token=')[1]?.split(';')[0]
+    token = authHeader.split('auth-token=')[1]?.split(';')[0] || null
   }
 
   if (!token) {
@@ -68,25 +68,24 @@ export default async function SettingsPage() {
 
   return (
     <DashboardLayout user={data.user}>
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Page Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
-            Settings
-          </h1>
-          <p className="text-text-secondary-light dark:text-text-secondary-dark">
-            Manage your account and preferences
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
+              Settings
+            </h1>
+            <p className="text-text-secondary-light dark:text-text-secondary-dark">
+              Manage your account settings and categories
+            </p>
+          </div>
         </div>
 
-        {/* Settings Form */}
-        <SettingsForm user={data.user} />
-
-        {/* Category Manager */}
-        <CategoryManager 
-          categories={data.categories}
-          userId={payload.userId}
-        />
+        {/* Settings Forms */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SettingsForm user={data.user} />
+          <CategoryManager categories={data.categories} />
+        </div>
       </div>
     </DashboardLayout>
   )

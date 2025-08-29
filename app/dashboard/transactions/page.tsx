@@ -58,9 +58,9 @@ export default async function TransactionsPage() {
   const authHeader = headersList.get('authorization') || headersList.get('cookie')
   
   // Extract token from cookie if present
-  let token = extractTokenFromHeader(authHeader)
+  let token: string | null = extractTokenFromHeader(authHeader)
   if (!token && authHeader?.includes('auth-token=')) {
-    token = authHeader.split('auth-token=')[1]?.split(';')[0]
+    token = authHeader.split('auth-token=')[1]?.split(';')[0] || null
   }
 
   if (!token) {

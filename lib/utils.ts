@@ -1,100 +1,21 @@
-import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns'
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount)
 }
 
-export function formatDate(date: string): string {
-  return format(parseISO(date), 'MMM dd, yyyy')
-}
-
-export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
-  const categoryMap = new Map<string, { amount: number; color: string; name: string }>()
-  let totalAmount = 0
-
-  transactions.forEach(transaction => {
-    const category = transaction.metadata?.category
-    if (!category) return
-
-    const categoryId = category.id
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    totalAmount += amount
-
-    if (categoryMap.has(categoryId)) {
-      const existing = categoryMap.get(categoryId)!
-      categoryMap.set(categoryId, {
-        ...existing,
-        amount: existing.amount + amount
-      })
-    } else {
-      categoryMap.set(categoryId, {
-        amount,
-        color: category.metadata?.color || '#6B7280',
-        name: category.metadata?.name || category.title
-      })
-    }
+export function formatDate(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
   })
-
-  return Array.from(categoryMap.values()).map(item => ({
-    ...item,
-    percentage: totalAmount > 0 ? (item.amount / totalAmount) * 100 : 0
-  }))
-}
-
-export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  const monthlyMap = new Map<string, { income: number; expenses: number }>()
-
-  // Initialize last 6 months
-  for (let i = 5; i >= 0; i--) {
-    const date = subMonths(new Date(), i)
-    const monthKey = format(date, 'yyyy-MM')
-    monthlyMap.set(monthKey, { income: 0, expenses: 0 })
-  }
-
-  transactions.forEach(transaction => {
-    const transactionDate = parseISO(transaction.metadata.date)
-    const monthKey = format(transactionDate, 'yyyy-MM')
-    
-    if (monthlyMap.has(monthKey)) {
-      const monthData = monthlyMap.get(monthKey)!
-      const amount = transaction.metadata.amount || 0
-      
-      if (transaction.metadata.type?.key === 'income') {
-        monthData.income += amount
-      } else {
-        monthData.expenses += Math.abs(amount)
-      }
-    }
-  })
-
-  return Array.from(monthlyMap.entries()).map(([monthKey, data]) => ({
-    month: format(parseISO(monthKey + '-01'), 'MMM'),
-    income: data.income,
-    expenses: data.expenses,
-    net: data.income - data.expenses
-  }))
-}
-
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$/
-  return emailRegex.test(email)
-}
-
-export function validatePassword(password: string): { isValid: boolean; message?: string } {
-  if (password.length < 8) {
-    return { isValid: false, message: 'Password must be at least 8 characters long' }
-  }
-  if (!/[A-Za-z]/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one letter' }
-  }
-  if (!/[0-9]/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one number' }
-  }
-  return { isValid: true }
 }
 
 export function generateSlug(text: string): string {
@@ -104,6 +25,66 @@ export function generateSlug(text: string): string {
     .replace(/(^-|-$)/g, '')
 }
 
-export function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ')
+export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
+  const categoryMap = new Map<string, { amount: number; color: string; name: string }>()
+  
+  transactions.forEach(transaction => {
+    if (transaction.metadata.category) {
+      const categoryName = transaction.metadata.category.metadata?.name || transaction.metadata.category.title
+      const categoryColor = transaction.metadata.category.metadata?.color || '#FF9800'
+      const amount = Math.abs(transaction.metadata.amount || 0)
+      
+      if (categoryMap.has(categoryName)) {
+        const existing = categoryMap.get(categoryName)!
+        categoryMap.set(categoryName, {
+          ...existing,
+          amount: existing.amount + amount
+        })
+      } else {
+        categoryMap.set(categoryName, {
+          name: categoryName,
+          amount,
+          color: categoryColor
+        })
+      }
+    }
+  })
+  
+  const totalExpenses = Array.from(categoryMap.values()).reduce((sum, cat) => sum + cat.amount, 0)
+  
+  return Array.from(categoryMap.values()).map(category => ({
+    ...category,
+    percentage: totalExpenses > 0 ? Math.round((category.amount / totalExpenses) * 100) : 0
+  })).sort((a, b) => b.amount - a.amount)
+}
+
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
+  const monthMap = new Map<string, { income: number; expenses: number }>()
+  
+  transactions.forEach(transaction => {
+    const date = new Date(transaction.metadata.date)
+    const monthKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+    const amount = Math.abs(transaction.metadata.amount || 0)
+    
+    if (!monthMap.has(monthKey)) {
+      monthMap.set(monthKey, { income: 0, expenses: 0 })
+    }
+    
+    const monthData = monthMap.get(monthKey)!
+    if (transaction.metadata.type?.key === 'income') {
+      monthData.income += amount
+    } else {
+      monthData.expenses += amount
+    }
+  })
+  
+  return Array.from(monthMap.entries())
+    .map(([month, data]) => ({
+      month,
+      income: data.income,
+      expenses: data.expenses,
+      net: data.income - data.expenses
+    }))
+    .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+    .slice(-6) // Last 6 months
 }

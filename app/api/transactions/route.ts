@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cosmic, hasStatus } from '@/lib/cosmic'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { generateSlug } from '@/lib/utils'
-import { TransactionFormData } from '@/types'
+import { TransactionFormData, Transaction } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,20 +25,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body: TransactionFormData & { title: string } = await request.json()
-    const { type, amount, category, description, date, title } = body
+    const body: TransactionFormData = await request.json()
+    const { type, amount, category, description, date } = body
 
     // Validate input
-    if (!type || !amount || !category || !date || !title) {
+    if (!type || !amount || !category || !date) {
       return NextResponse.json(
-        { error: 'All required fields must be provided' },
-        { status: 400 }
-      )
-    }
-
-    if (amount <= 0) {
-      return NextResponse.json(
-        { error: 'Amount must be greater than 0' },
+        { error: 'Type, amount, category, and date are required' },
         { status: 400 }
       )
     }
@@ -46,15 +39,15 @@ export async function POST(request: NextRequest) {
     // Create transaction
     const newTransaction = await cosmic.objects.insertOne({
       type: 'transactions',
-      title,
-      slug: generateSlug(title + '-' + Date.now()),
+      title: description || `${type === 'income' ? 'Income' : 'Expense'} - ${amount}`,
+      slug: generateSlug(`${type}-${amount}-${payload.userId}-${Date.now()}`),
       metadata: {
         user: payload.userId,
         type: {
           key: type,
           value: type === 'income' ? 'Income' : 'Expense'
         },
-        amount,
+        amount: parseFloat(amount.toString()),
         category,
         description: description || '',
         date
@@ -92,7 +85,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get transactions with category data
+    // Get transactions
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',
@@ -101,8 +94,14 @@ export async function GET(request: NextRequest) {
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
 
-    const transactions = transactionsResponse.objects
-      .sort((a, b) => new Date(b.metadata.date).getTime() - new Date(a.metadata.date).getTime())
+    let transactions = transactionsResponse.objects as Transaction[]
+
+    // Sort transactions by date (newest first)
+    transactions = transactions.sort((a: Transaction, b: Transaction) => {
+      const dateA = new Date(a.metadata?.date || '').getTime()
+      const dateB = new Date(b.metadata?.date || '').getTime()
+      return dateB - dateA
+    })
 
     return NextResponse.json({ transactions })
   } catch (error) {

@@ -31,18 +31,19 @@ export async function PUT(
       )
     }
 
-    const body: Partial<TransactionFormData> & { title?: string } = await request.json()
-    const { type, amount, category, description, date, title } = body
+    const body: Partial<TransactionFormData> = await request.json()
+    const { type, amount, category, description, date } = body
 
     // Build update object with only provided fields
     const updateData: any = {}
     
-    if (title) updateData.title = title
-    if (type) updateData['metadata.type'] = {
-      key: type,
-      value: type === 'income' ? 'Income' : 'Expense'
+    if (type) {
+      updateData['metadata.type'] = {
+        key: type,
+        value: type === 'income' ? 'Income' : 'Expense'
+      }
     }
-    if (amount !== undefined) updateData['metadata.amount'] = amount
+    if (amount !== undefined) updateData['metadata.amount'] = parseFloat(amount.toString())
     if (category) updateData['metadata.category'] = category
     if (description !== undefined) updateData['metadata.description'] = description
     if (date) updateData['metadata.date'] = date
