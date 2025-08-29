@@ -2,42 +2,43 @@ import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key')
-
-export async function hashPassword(password: string): Promise<string> {
-  return await bcrypt.hash(password, 12)
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is not set')
 }
 
-export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-  return await bcrypt.compare(password, hashedPassword)
-}
+const secret = new TextEncoder().encode(JWT_SECRET)
 
-export async function signJWT(payload: { userId: string; email: string }): Promise<string> {
+export async function createJWT(payload: { userId: string; email: string }): Promise<string> {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET)
+    .sign(secret)
 }
 
-export function verifyJWT(token: string): JWTPayload | null {
+export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    // This is a simplified verification for development
-    // In production, use proper JWT verification with jose
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    return payload
-  } catch (error) {
-    return null
-  }
-}
-
-export async function verifyJWTAsync(token: string): Promise<JWTPayload | null> {
-  try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
+    console.error('JWT verification failed:', error)
     return null
   }
+}
+
+export function hashPassword(password: string): string {
+  if (!password) {
+    throw new Error('Password is required')
+  }
+  return bcrypt.hashSync(password, 12)
+}
+
+export function comparePassword(password: string, hash: string): boolean {
+  if (!password || !hash) {
+    return false
+  }
+  return bcrypt.compareSync(password, hash)
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
@@ -45,7 +46,6 @@ export function extractTokenFromHeader(authHeader: string | null): string | null
     return null
   }
   
-  // Handle Authorization: Bearer <token>
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }

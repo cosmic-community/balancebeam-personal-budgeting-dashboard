@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { verifyPassword, signJWT } from '@/lib/auth'
-import { validateEmail } from '@/lib/utils'
-import { User, LoginRequest } from '@/types'
+import { createJWT, comparePassword } from '@/lib/auth'
+import { LoginRequest, User } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,48 +16,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!validateEmail(email)) {
-      return NextResponse.json(
-        { error: 'Invalid email format' },
-        { status: 400 }
-      )
-    }
-
     // Find user by email
-    const response = await cosmic.objects
+    const usersResponse = await cosmic.objects
       .find({ 
         type: 'users',
-        'metadata.email': email 
+        'metadata.email': email.toLowerCase()
       })
-      .props(['id', 'title', 'metadata'])
+      .props(['id', 'title', 'slug', 'metadata'])
 
-    const users = response.objects as User[]
+    const users = usersResponse.objects as User[]
+    
+    if (users.length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
     const user = users[0]
 
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      )
-    }
-
     // Verify password
-    const isValidPassword = verifyPassword(password, user.metadata.password_hash)
-    if (!isValidPassword) {
+    const isValid = comparePassword(password, user.metadata.password_hash)
+    if (!isValid) {
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: 'Invalid credentials' },
         { status: 401 }
       )
     }
 
-    // Generate JWT
-    const token = signJWT({
+    // Create JWT token
+    const token = await createJWT({
       userId: user.id,
       email: user.metadata.email
     })
 
-    // Set cookie and return user data
-    const response_obj = NextResponse.json({
+    // Create response with user data
+    const response = NextResponse.json({
       user: {
         id: user.id,
         email: user.metadata.email,
@@ -68,20 +61,21 @@ export async function POST(request: NextRequest) {
       token
     })
 
-    response_obj.cookies.set('auth-token', token, {
+    // Set HTTP-only cookie
+    response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 7 // 7 days
+      maxAge: 7 * 24 * 60 * 60 // 7 days
     })
 
-    return response_obj
+    return response
   } catch (error) {
     console.error('Login error:', error)
     
     if (hasStatus(error) && error.status === 404) {
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: 'Invalid credentials' },
         { status: 401 }
       )
     }
