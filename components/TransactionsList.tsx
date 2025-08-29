@@ -45,17 +45,13 @@ export default function TransactionsList({
         return
       }
 
-      const categoryName = selectedCategory.metadata?.name || selectedCategory.title
-      if (!categoryName) {
-        alert('Category name is missing')
-        return
-      }
+      const categoryName = selectedCategory.metadata?.name || selectedCategory.title || 'Unknown Category'
 
       const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token || ''}`
         },
         body: JSON.stringify(formData)
       })
@@ -91,7 +87,7 @@ export default function TransactionsList({
       const response = await fetch(`/api/transactions/${transactionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token || ''}`
         }
       })
 
