@@ -1,17 +1,30 @@
-import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcrypt'
+import { SignJWT, jwtVerify } from 'jose'
 import { JWTPayload } from '@/types'
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET)
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key')
 
-export async function createJWT(payload: JWTPayload): Promise<string> {
-  return new SignJWT({ ...payload })
+// Hash password
+export async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12
+  return bcrypt.hash(password, saltRounds)
+}
+
+// Verify password
+export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword)
+}
+
+// Sign JWT
+export async function signJWT(payload: JWTPayload): Promise<string> {
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime('7d')
     .sign(secret)
 }
 
+// Verify JWT
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret)
@@ -21,27 +34,20 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   }
 }
 
-export async function hashPassword(password: string): Promise<string> {
-  const saltRounds = 12
-  return bcrypt.hash(password, saltRounds)
-}
-
-export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-  return bcrypt.compare(password, hashedPassword)
-}
-
+// Extract token from Authorization header
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
+  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
   
   // Handle cookie format
   if (authHeader.includes('auth-token=')) {
-    const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
-    return tokenMatch ? tokenMatch[1] : null
+    const match = authHeader.match(/auth-token=([^;]+)/)
+    return match ? match[1] : null
   }
   
-  return null
+  return authHeader
 }

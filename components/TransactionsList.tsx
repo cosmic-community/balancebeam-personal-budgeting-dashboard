@@ -18,11 +18,10 @@ export default function TransactionsList({
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
-    category: categories.length > 0 ? categories[0].id : '',
+    category: '',
     description: '',
     date: new Date().toISOString().split('T')[0]
   })
@@ -33,58 +32,55 @@ export default function TransactionsList({
 
     try {
       const token = localStorage.getItem('auth-token')
-      const url = editingId ? `/api/transactions/${editingId}` : '/api/transactions'
-      const method = editingId ? 'PUT' : 'POST'
+      
+      // Validate required fields
+      if (!formData.category) {
+        alert('Please select a category')
+        return
+      }
 
-      const response = await fetch(url, {
-        method,
+      const selectedCategory = categories.find(cat => cat.id === formData.category)
+      if (!selectedCategory) {
+        alert('Selected category not found')
+        return
+      }
+
+      const categoryName = selectedCategory.metadata?.name || selectedCategory.title
+      if (!categoryName) {
+        alert('Category name is missing')
+        return
+      }
+
+      const response = await fetch('/api/transactions', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token || ''}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(formData)
       })
 
       if (response.ok) {
         const data = await response.json()
-        
-        if (editingId) {
-          setTransactions(prev => prev.map(t => t.id === editingId ? data.transaction : t))
-        } else {
-          setTransactions(prev => [data.transaction, ...prev])
-        }
-        
-        // Reset form
+        setTransactions(prev => [data.transaction, ...prev])
         setFormData({
           type: 'expense',
           amount: 0,
-          category: categories.length > 0 ? categories[0].id : '',
+          category: '',
           description: '',
           date: new Date().toISOString().split('T')[0]
         })
         setShowForm(false)
-        setEditingId(null)
       } else {
-        throw new Error('Failed to save transaction')
+        const errorData = await response.json()
+        alert(errorData.error || 'Failed to create transaction')
       }
     } catch (error) {
-      console.error('Transaction save error:', error)
-      alert('Failed to save transaction. Please try again.')
+      console.error('Transaction creation error:', error)
+      alert('Failed to create transaction. Please try again.')
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleEdit = (transaction: Transaction) => {
-    setFormData({
-      type: transaction.metadata.type?.key || 'expense',
-      amount: Math.abs(transaction.metadata.amount || 0),
-      category: transaction.metadata.category?.id || (categories.length > 0 ? categories[0].id : ''),
-      description: transaction.metadata.description || '',
-      date: transaction.metadata.date || new Date().toISOString().split('T')[0]
-    })
-    setEditingId(transaction.id)
-    setShowForm(true)
   }
 
   const handleDelete = async (transactionId: string) => {
@@ -95,14 +91,15 @@ export default function TransactionsList({
       const response = await fetch(`/api/transactions/${transactionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token || ''}`
+          'Authorization': `Bearer ${token}`
         }
       })
 
       if (response.ok) {
         setTransactions(prev => prev.filter(t => t.id !== transactionId))
       } else {
-        throw new Error('Failed to delete transaction')
+        const errorData = await response.json()
+        alert(errorData.error || 'Failed to delete transaction')
       }
     } catch (error) {
       console.error('Transaction deletion error:', error)
@@ -110,17 +107,11 @@ export default function TransactionsList({
     }
   }
 
-  const resetForm = () => {
-    setFormData({
-      type: 'expense',
-      amount: 0,
-      category: categories.length > 0 ? categories[0].id : '',
-      description: '',
-      date: new Date().toISOString().split('T')[0]
-    })
-    setEditingId(null)
-    setShowForm(false)
-  }
+  // Filter categories by type for the form
+  const filteredCategories = categories.filter(cat => {
+    const categoryType = cat.metadata?.type?.key
+    return categoryType === formData.type
+  })
 
   return (
     <div className="card">
@@ -141,16 +132,20 @@ export default function TransactionsList({
       
       {showForm && (
         <div className="border-b border-border-light dark:border-border-dark pb-4 mb-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
                   Type
                 </label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'income' | 'expense' }))}
-                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    type: e.target.value as 'income' | 'expense',
+                    category: '' // Reset category when type changes
+                  }))}
+                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
                 >
                   <option value="expense">Expense</option>
                   <option value="income">Income</option>
@@ -158,158 +153,136 @@ export default function TransactionsList({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                  Amount
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Amount ($)
                 </label>
                 <input
                   type="number"
                   step="0.01"
-                  min="0"
-                  value={formData.amount}
+                  value={formData.amount || ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Category
+                </label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
+                  required
+                >
+                  <option value="">Select a category</option>
+                  {filteredCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.metadata?.name || category.title || 'Unnamed Category'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                Category
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-                required
-              >
-                {categories.length === 0 ? (
-                  <option value="">No categories available</option>
-                ) : (
-                  categories
-                    .filter(cat => cat.metadata.type?.key === formData.type)
-                    .map(category => (
-                      <option key={category.id} value={category.id}>
-                        {category.metadata.name}
-                      </option>
-                    ))
-                )}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                Description
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                Description (optional)
               </label>
               <input
                 type="text"
-                value={formData.description}
+                value={formData.description || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-                placeholder="Optional description"
+                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
+                placeholder="Enter transaction description"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-                Date
-              </label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-                required
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={loading || categories.length === 0}
-                className="flex-1 btn-primary"
-              >
-                {loading ? 'Saving...' : editingId ? 'Update Transaction' : 'Add Transaction'}
-              </button>
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="px-4 py-2 text-text-secondary-light dark:text-text-secondary-dark border border-border-light dark:border-border-dark rounded-md hover:bg-surface-light dark:hover:bg-surface-dark"
-                >
-                  Cancel Edit
-                </button>
-              )}
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full btn-primary text-sm py-2"
+            >
+              {loading ? 'Creating...' : 'Create Transaction'}
+            </button>
           </form>
         </div>
       )}
       
-      <div className="space-y-4">
+      <div className="space-y-3">
         {transactions.length === 0 ? (
-          <p className="text-text-secondary-light dark:text-text-secondary-dark text-center py-8">
-            No transactions yet. Add your first transaction above.
+          <p className="text-text-secondary-light dark:text-text-secondary-dark text-center py-4">
+            No transactions yet. Create your first transaction above.
           </p>
         ) : (
-          transactions.map((transaction) => (
-            <div 
-              key={transaction.id} 
-              className="flex items-center justify-between p-4 bg-surface-light dark:bg-surface-dark rounded-lg"
-            >
-              <div className="flex items-center space-x-4">
-                <div 
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: transaction.metadata.category?.metadata?.color || '#6B7280' }}
-                />
-                <div>
-                  <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                    {transaction.title}
-                  </p>
-                  <div className="flex items-center space-x-2 text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                    <span>{transaction.metadata.category?.metadata?.name || 'Unknown Category'}</span>
-                    <span>•</span>
-                    <span>{formatDate(transaction.metadata.date || new Date().toISOString())}</span>
+          transactions.map((transaction) => {
+            const categoryName = transaction.metadata?.category?.metadata?.name || 
+                               transaction.metadata?.category?.title || 
+                               'Unknown Category'
+            const categoryColor = transaction.metadata?.category?.metadata?.color || '#999999'
+            const transactionType = transaction.metadata?.type?.value || 'Unknown'
+            const amount = transaction.metadata?.amount || 0
+            const description = transaction.metadata?.description || transaction.title || 'No description'
+            const date = transaction.metadata?.date || transaction.created_at || ''
+
+            return (
+              <div 
+                key={transaction.id} 
+                className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg"
+              >
+                <div className="flex items-center space-x-3 flex-1">
+                  <div 
+                    className="w-4 h-4 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: categoryColor }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-text-primary-light dark:text-text-primary-dark truncate">
+                        {description}
+                      </p>
+                      <p className={`font-bold ${
+                        transactionType === 'Income' 
+                          ? 'text-success' 
+                          : 'text-error'
+                      }`}>
+                        {transactionType === 'Income' ? '+' : '-'}{formatCurrency(Math.abs(amount))}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                        {categoryName}
+                      </p>
+                      <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                        {formatDate(date)}
+                      </p>
+                    </div>
                   </div>
-                  {transaction.metadata.description && (
-                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                      {transaction.metadata.description}
-                    </p>
-                  )}
                 </div>
+                <button
+                  onClick={() => handleDelete(transaction.id)}
+                  className="ml-3 text-error hover:text-error-dark text-sm px-2 py-1 rounded flex-shrink-0"
+                >
+                  Delete
+                </button>
               </div>
-              
-              <div className="flex items-center space-x-3">
-                <div className="text-right">
-                  <p className={`font-medium ${
-                    transaction.metadata.type?.key === 'income' 
-                      ? 'text-success' 
-                      : 'text-error'
-                  }`}>
-                    {transaction.metadata.type?.key === 'income' ? '+' : '-'}
-                    {formatCurrency(Math.abs(transaction.metadata.amount || 0))}
-                  </p>
-                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                    {transaction.metadata.type?.value || 'Unknown'}
-                  </p>
-                </div>
-                
-                <div className="flex space-x-1">
-                  <button
-                    onClick={() => handleEdit(transaction)}
-                    className="text-primary hover:text-primary-dark text-sm px-2 py-1 rounded"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(transaction.id)}
-                    className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>
