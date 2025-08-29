@@ -2,9 +2,10 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { Transaction, User, Category } from '@/types'
+import { Transaction, Category, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import TransactionsList from '@/components/TransactionsList'
+import CategoryManager from '@/components/CategoryManager'
 
 async function getTransactionsData(userId: string) {
   try {
@@ -15,48 +16,41 @@ async function getTransactionsData(userId: string) {
     })
     const user = userResponse.object as User
 
-    // Get user's transactions with category data
-    let transactions: Transaction[] = []
-    try {
-      const transactionsResponse = await cosmic.objects
-        .find({ 
-          type: 'transactions',
-          'metadata.user': userId 
-        })
-        .props(['id', 'title', 'slug', 'metadata'])
-        .depth(1)
-      
-      transactions = transactionsResponse.objects as Transaction[]
-    } catch (error) {
-      if (hasStatus(error) && error.status === 404) {
-        transactions = []
-      } else {
-        throw error
-      }
-    }
+    // Get all transactions for user with category data
+    const transactionsResponse = await cosmic.objects
+      .find({ 
+        type: 'transactions',
+        'metadata.user': userId 
+      })
+      .props(['id', 'title', 'slug', 'metadata'])
+      .depth(1)
+    
+    const transactions = transactionsResponse.objects as Transaction[]
 
-    // Get user's categories for the transaction form
-    let categories: Category[] = []
-    try {
-      const categoriesResponse = await cosmic.objects
-        .find({ 
-          type: 'categories',
-          'metadata.user': userId 
-        })
-        .props(['id', 'title', 'slug', 'metadata'])
-      
-      categories = categoriesResponse.objects as Category[]
-    } catch (error) {
-      if (hasStatus(error) && error.status === 404) {
-        categories = []
-      } else {
-        throw error
-      }
-    }
+    // Get all categories for user
+    const categoriesResponse = await cosmic.objects
+      .find({ 
+        type: 'categories',
+        'metadata.user': userId 
+      })
+      .props(['id', 'title', 'slug', 'metadata'])
+    
+    const categories = categoriesResponse.objects as Category[]
 
-    return { user, transactions, categories }
+    return {
+      user,
+      transactions,
+      categories
+    }
   } catch (error) {
-    return { user: null, transactions: [], categories: [] }
+    if (hasStatus(error) && error.status === 404) {
+      return {
+        user: null,
+        transactions: [],
+        categories: []
+      }
+    }
+    throw error
   }
 }
 
@@ -89,19 +83,25 @@ export default async function TransactionsPage() {
     <DashboardLayout user={data.user}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
-            Transactions
-          </h1>
-          <p className="text-text-secondary-light dark:text-text-secondary-dark">
-            View and manage all your financial transactions
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
+              Transactions
+            </h1>
+            <p className="text-text-secondary-light dark:text-text-secondary-dark">
+              Manage your income and expenses
+            </p>
+          </div>
         </div>
 
-        {/* Transactions List Component */}
+        {/* Categories Management */}
+        <CategoryManager categories={data.categories} />
+
+        {/* Transactions List */}
         <TransactionsList 
           transactions={data.transactions} 
           categories={data.categories}
+          userId={payload.userId}
         />
       </div>
     </DashboardLayout>
