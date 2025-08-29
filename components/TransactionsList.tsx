@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Transaction, Category, TransactionFormData } from '@/types'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface TransactionsListProps {
   transactions: Transaction[]
@@ -14,10 +14,11 @@ export default function TransactionsList({ transactions: initialTransactions, ca
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
-    category: '',
+    category: categories[0]?.id || '',
     description: '',
     date: new Date().toISOString().split('T')[0]
   })
@@ -28,8 +29,11 @@ export default function TransactionsList({ transactions: initialTransactions, ca
 
     try {
       const token = localStorage.getItem('auth-token')
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
+      const method = editingId ? 'PUT' : 'POST'
+      const url = editingId ? `/api/transactions/${editingId}` : '/api/transactions'
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token || ''}`
@@ -39,24 +43,43 @@ export default function TransactionsList({ transactions: initialTransactions, ca
 
       if (response.ok) {
         const data = await response.json()
-        setTransactions(prev => [data.transaction, ...prev])
+        
+        if (editingId) {
+          setTransactions(prev => prev.map(t => t.id === editingId ? data.transaction : t))
+          setEditingId(null)
+        } else {
+          setTransactions(prev => [data.transaction, ...prev])
+        }
+        
         setFormData({
           type: 'expense',
           amount: 0,
-          category: '',
+          category: categories[0]?.id || '',
           description: '',
           date: new Date().toISOString().split('T')[0]
         })
         setShowForm(false)
       } else {
-        throw new Error('Failed to create transaction')
+        throw new Error('Failed to save transaction')
       }
     } catch (error) {
-      console.error('Transaction creation error:', error)
-      alert('Failed to create transaction. Please try again.')
+      console.error('Transaction save error:', error)
+      alert('Failed to save transaction. Please try again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleEdit = (transaction: Transaction) => {
+    setFormData({
+      type: transaction.metadata.type?.key || 'expense',
+      amount: transaction.metadata.amount || 0,
+      category: transaction.metadata.category?.id || '',
+      description: transaction.metadata.description || '',
+      date: transaction.metadata.date || new Date().toISOString().split('T')[0]
+    })
+    setEditingId(transaction.id)
+    setShowForm(true)
   }
 
   const handleDelete = async (transactionId: string) => {
@@ -82,6 +105,18 @@ export default function TransactionsList({ transactions: initialTransactions, ca
     }
   }
 
+  const cancelEdit = () => {
+    setEditingId(null)
+    setShowForm(false)
+    setFormData({
+      type: 'expense',
+      amount: 0,
+      category: categories[0]?.id || '',
+      description: '',
+      date: new Date().toISOString().split('T')[0]
+    })
+  }
+
   return (
     <div className="card">
       <div className="card-header">
@@ -98,7 +133,7 @@ export default function TransactionsList({ transactions: initialTransactions, ca
           </button>
         </div>
       </div>
-      
+
       {showForm && (
         <div className="border-b border-border-light dark:border-border-dark pb-4 mb-4">
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -124,8 +159,9 @@ export default function TransactionsList({ transactions: initialTransactions, ca
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={formData.amount}
-                  onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, amount: Number(e.target.value) }))}
                   className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
                   required
                 />
@@ -142,15 +178,14 @@ export default function TransactionsList({ transactions: initialTransactions, ca
                 className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
                 required
               >
-                <option value="">Select category</option>
+                <option value="">Select a category</option>
                 {categories
                   .filter(cat => cat.metadata.type?.key === formData.type)
                   .map(category => (
                     <option key={category.id} value={category.id}>
-                      {category.metadata.name}
+                      {category.metadata.name || category.title}
                     </option>
-                  ))
-                }
+                  ))}
               </select>
             </div>
 
@@ -180,17 +215,28 @@ export default function TransactionsList({ transactions: initialTransactions, ca
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full btn-primary text-sm py-2"
-            >
-              {loading ? 'Creating...' : 'Create Transaction'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 btn-primary text-sm py-2"
+              >
+                {loading ? 'Saving...' : editingId ? 'Update Transaction' : 'Create Transaction'}
+              </button>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="btn-secondary text-sm py-2 px-4"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </form>
         </div>
       )}
-      
+
       <div className="space-y-3">
         {transactions.length === 0 ? (
           <p className="text-text-secondary-light dark:text-text-secondary-dark text-center py-4">
@@ -200,42 +246,52 @@ export default function TransactionsList({ transactions: initialTransactions, ca
           transactions.map((transaction) => (
             <div 
               key={transaction.id} 
-              className="flex items-center justify-between p-4 bg-surface-light dark:bg-surface-dark rounded-lg"
+              className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg"
             >
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
                 <div 
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: transaction.metadata.category?.metadata?.color || '#6B7280' }}
+                  className="w-4 h-4 rounded-full"
+                  style={{ backgroundColor: transaction.metadata.category?.metadata?.color || '#666' }}
                 />
                 <div>
                   <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
                     {transaction.title}
                   </p>
-                  <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                    {transaction.metadata.category?.metadata?.name || 'Unknown'} • {transaction.metadata.date}
-                  </p>
+                  <div className="flex items-center space-x-2 text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                    <span>{transaction.metadata.category?.metadata?.name || 'Unknown Category'}</span>
+                    <span>•</span>
+                    <span>{formatDate(transaction.metadata.date || '')}</span>
+                  </div>
                   {transaction.metadata.description && (
-                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
                       {transaction.metadata.description}
                     </p>
                   )}
                 </div>
               </div>
               <div className="flex items-center space-x-3">
-                <div className={`text-lg font-semibold ${
+                <span className={`font-semibold ${
                   transaction.metadata.type?.key === 'income' 
                     ? 'text-success' 
                     : 'text-error'
                 }`}>
                   {transaction.metadata.type?.key === 'income' ? '+' : '-'}
-                  {formatCurrency(Math.abs(transaction.metadata.amount || 0))}
+                  {formatCurrency(transaction.metadata.amount || 0)}
+                </span>
+                <div className="flex space-x-1">
+                  <button
+                    onClick={() => handleEdit(transaction)}
+                    className="text-primary hover:text-primary-dark text-sm px-2 py-1 rounded"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(transaction.id)}
+                    className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
+                  >
+                    Delete
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleDelete(transaction.id)}
-                  className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
-                >
-                  Delete
-                </button>
               </div>
             </div>
           ))
