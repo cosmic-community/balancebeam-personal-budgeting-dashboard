@@ -14,14 +14,26 @@ export default function TransactionsList({ transactions: initialTransactions, ca
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
-    category: categories[0]?.id || '',
+    category: categories[0]?.id || '', // Safe fallback for category
     description: '',
     date: new Date().toISOString().split('T')[0]
   })
+
+  const resetForm = () => {
+    setFormData({
+      type: 'expense',
+      amount: 0,
+      category: categories[0]?.id || '', // Safe fallback for category
+      description: '',
+      date: new Date().toISOString().split('T')[0]
+    })
+    setEditingTransaction(null)
+    setShowForm(false)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,14 +41,16 @@ export default function TransactionsList({ transactions: initialTransactions, ca
 
     try {
       const token = localStorage.getItem('auth-token')
-      const method = editingId ? 'PUT' : 'POST'
-      const url = editingId ? `/api/transactions/${editingId}` : '/api/transactions'
+      const method = editingTransaction ? 'PUT' : 'POST'
+      const url = editingTransaction 
+        ? `/api/transactions/${editingTransaction.id}`
+        : '/api/transactions'
 
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token || ''}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(formData)
       })
@@ -44,21 +58,15 @@ export default function TransactionsList({ transactions: initialTransactions, ca
       if (response.ok) {
         const data = await response.json()
         
-        if (editingId) {
-          setTransactions(prev => prev.map(t => t.id === editingId ? data.transaction : t))
-          setEditingId(null)
+        if (editingTransaction) {
+          setTransactions(prev => 
+            prev.map(t => t.id === editingTransaction.id ? data.transaction : t)
+          )
         } else {
           setTransactions(prev => [data.transaction, ...prev])
         }
         
-        setFormData({
-          type: 'expense',
-          amount: 0,
-          category: categories[0]?.id || '',
-          description: '',
-          date: new Date().toISOString().split('T')[0]
-        })
-        setShowForm(false)
+        resetForm()
       } else {
         throw new Error('Failed to save transaction')
       }
@@ -71,14 +79,14 @@ export default function TransactionsList({ transactions: initialTransactions, ca
   }
 
   const handleEdit = (transaction: Transaction) => {
+    setEditingTransaction(transaction)
     setFormData({
-      type: transaction.metadata.type?.key || 'expense',
+      type: transaction.metadata.type?.key || 'expense', // Safe access with fallback
       amount: transaction.metadata.amount || 0,
-      category: transaction.metadata.category?.id || '',
+      category: transaction.metadata.category?.id || categories[0]?.id || '', // Safe access with fallback
       description: transaction.metadata.description || '',
-      date: transaction.metadata.date || new Date().toISOString().split('T')[0]
+      date: transaction.metadata.date || new Date().toISOString().split('T')[0] // Safe access with fallback
     })
-    setEditingId(transaction.id)
     setShowForm(true)
   }
 
@@ -90,7 +98,7 @@ export default function TransactionsList({ transactions: initialTransactions, ca
       const response = await fetch(`/api/transactions/${transactionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token || ''}`
+          'Authorization': `Bearer ${token}`
         }
       })
 
@@ -103,18 +111,6 @@ export default function TransactionsList({ transactions: initialTransactions, ca
       console.error('Transaction deletion error:', error)
       alert('Failed to delete transaction. Please try again.')
     }
-  }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setShowForm(false)
-    setFormData({
-      type: 'expense',
-      amount: 0,
-      category: categories[0]?.id || '',
-      description: '',
-      date: new Date().toISOString().split('T')[0]
-    })
   }
 
   return (
@@ -133,7 +129,7 @@ export default function TransactionsList({ transactions: initialTransactions, ca
           </button>
         </div>
       </div>
-
+      
       {showForm && (
         <div className="border-b border-border-light dark:border-border-dark pb-4 mb-4">
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -159,9 +155,8 @@ export default function TransactionsList({ transactions: initialTransactions, ca
                 <input
                   type="number"
                   step="0.01"
-                  min="0"
                   value={formData.amount}
-                  onChange={(e) => setFormData(prev => ({ ...prev, amount: Number(e.target.value) }))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
                   className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
                   required
                 />
@@ -215,86 +210,93 @@ export default function TransactionsList({ transactions: initialTransactions, ca
               />
             </div>
 
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 btn-primary text-sm py-2"
-              >
-                {loading ? 'Saving...' : editingId ? 'Update Transaction' : 'Create Transaction'}
-              </button>
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  className="btn-secondary text-sm py-2 px-4"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full btn-primary text-sm py-2"
+            >
+              {loading ? 'Saving...' : editingTransaction ? 'Update Transaction' : 'Create Transaction'}
+            </button>
           </form>
         </div>
       )}
-
+      
       <div className="space-y-3">
         {transactions.length === 0 ? (
           <p className="text-text-secondary-light dark:text-text-secondary-dark text-center py-4">
             No transactions yet. Create your first transaction above.
           </p>
         ) : (
-          transactions.map((transaction) => (
-            <div 
-              key={transaction.id} 
-              className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg"
-            >
-              <div className="flex items-center space-x-3">
-                <div 
-                  className="w-4 h-4 rounded-full"
-                  style={{ backgroundColor: transaction.metadata.category?.metadata?.color || '#666' }}
-                />
-                <div>
-                  <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                    {transaction.title}
-                  </p>
-                  <div className="flex items-center space-x-2 text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                    <span>{transaction.metadata.category?.metadata?.name || 'Unknown Category'}</span>
-                    <span>•</span>
-                    <span>{formatDate(transaction.metadata.date || '')}</span>
+          transactions.map((transaction) => {
+            // Safe access to nested properties with fallbacks
+            const transactionType = transaction.metadata.type?.key || 'expense'
+            const transactionAmount = transaction.metadata.amount || 0
+            const categoryName = transaction.metadata.category?.metadata?.name || transaction.metadata.category?.title || 'Unknown Category'
+            const categoryColor = transaction.metadata.category?.metadata?.color || '#9CA3AF'
+            const transactionDescription = transaction.metadata.description || ''
+            const transactionDate = transaction.metadata.date || ''
+            
+            return (
+              <div 
+                key={transaction.id} 
+                className="flex items-center justify-between p-4 bg-surface-light dark:bg-surface-dark rounded-lg"
+              >
+                <div className="flex items-center space-x-4">
+                  <div 
+                    className="w-3 h-8 rounded-sm"
+                    style={{ backgroundColor: categoryColor }}
+                  />
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h4 className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                        {transaction.title}
+                      </h4>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        transactionType === 'income'
+                          ? 'bg-success-light text-success-dark'
+                          : 'bg-error-light text-error-dark'
+                      }`}>
+                        {transactionType === 'income' ? 'Income' : 'Expense'}
+                      </span>
+                    </div>
+                    <div className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                      <span>{categoryName}</span>
+                      {transactionDescription && <span> • {transactionDescription}</span>}
+                    </div>
+                    <div className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
+                      {transactionDate && formatDate(transactionDate)}
+                    </div>
                   </div>
-                  {transaction.metadata.description && (
-                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                      {transaction.metadata.description}
-                    </p>
-                  )}
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <div className="text-right">
+                    <div className={`font-semibold ${
+                      transactionType === 'income'
+                        ? 'text-success'
+                        : 'text-error'
+                    }`}>
+                      {transactionType === 'income' ? '+' : '-'}{formatCurrency(Math.abs(transactionAmount))}
+                    </div>
+                  </div>
+                  <div className="flex space-x-1">
+                    <button
+                      onClick={() => handleEdit(transaction)}
+                      className="text-accent hover:text-accent-dark text-sm px-2 py-1 rounded"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center space-x-3">
-                <span className={`font-semibold ${
-                  transaction.metadata.type?.key === 'income' 
-                    ? 'text-success' 
-                    : 'text-error'
-                }`}>
-                  {transaction.metadata.type?.key === 'income' ? '+' : '-'}
-                  {formatCurrency(transaction.metadata.amount || 0)}
-                </span>
-                <div className="flex space-x-1">
-                  <button
-                    onClick={() => handleEdit(transaction)}
-                    className="text-primary hover:text-primary-dark text-sm px-2 py-1 rounded"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(transaction.id)}
-                    className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>
