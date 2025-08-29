@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
-import { cosmic, hasStatus } from '@/lib/cosmic'
-import { Category, User } from '@/types'
+import { cosmic } from '@/lib/cosmic'
+import { User, Category } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import SettingsForm from '@/components/SettingsForm'
 import CategoryManager from '@/components/CategoryManager'
@@ -16,28 +16,25 @@ async function getSettingsData(userId: string) {
     })
     const user = userResponse.object as User
 
-    // Get all categories for user
-    const categoriesResponse = await cosmic.objects
-      .find({ 
-        type: 'categories',
-        'metadata.user': userId 
-      })
-      .props(['id', 'title', 'slug', 'metadata'])
-    
-    const categories = categoriesResponse.objects as Category[]
+    // Get user's categories
+    let categories: Category[] = []
+    try {
+      const categoriesResponse = await cosmic.objects
+        .find({ 
+          type: 'categories',
+          'metadata.user': userId 
+        })
+        .props(['id', 'title', 'slug', 'metadata'])
+      
+      categories = categoriesResponse.objects as Category[]
+    } catch (error) {
+      // Categories might not exist yet, that's okay
+      categories = []
+    }
 
-    return {
-      user,
-      categories
-    }
+    return { user, categories }
   } catch (error) {
-    if (hasStatus(error) && error.status === 404) {
-      return {
-        user: null,
-        categories: []
-      }
-    }
-    throw error
+    return { user: null, categories: [] }
   }
 }
 
@@ -55,7 +52,7 @@ export default async function SettingsPage() {
     redirect('/login')
   }
 
-  const payload = verifyJWT(token)
+  const payload = await verifyJWT(token)
   if (!payload) {
     redirect('/login')
   }
@@ -68,22 +65,22 @@ export default async function SettingsPage() {
 
   return (
     <DashboardLayout user={data.user}>
-      <div className="space-y-6">
+      <div className="space-y-grid-gap">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
-              Settings
-            </h1>
-            <p className="text-text-secondary-light dark:text-text-secondary-dark">
-              Manage your account settings and categories
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            Settings
+          </h1>
+          <p className="text-text-secondary-light dark:text-text-secondary-dark">
+            Manage your account preferences and categories
+          </p>
         </div>
 
-        {/* Settings Forms */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-grid-gap">
+          {/* User Settings */}
           <SettingsForm user={data.user} />
+          
+          {/* Category Management */}
           <CategoryManager categories={data.categories} />
         </div>
       </div>

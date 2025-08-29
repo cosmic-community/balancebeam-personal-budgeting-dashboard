@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic } from '@/lib/cosmic'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
+import { User } from '@/types'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
         { error: 'Invalid token' },
@@ -28,18 +29,15 @@ export async function GET(request: NextRequest) {
       type: 'users',
       id: payload.userId
     })
-
-    const user = userResponse.object
-
-    // Return user data without password hash
-    const { password_hash, ...userData } = user.metadata
     
-    return NextResponse.json({ 
+    const user = userResponse.object as User
+
+    return NextResponse.json({
       user: {
         id: user.id,
-        email: userData.email,
-        full_name: userData.full_name,
-        dark_mode: userData.dark_mode || false
+        email: user.metadata.email,
+        full_name: user.metadata.full_name,
+        dark_mode: user.metadata.dark_mode || false
       }
     })
   } catch (error) {

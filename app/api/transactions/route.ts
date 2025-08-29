@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cosmic, hasStatus } from '@/lib/cosmic'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { generateSlug } from '@/lib/utils'
-import { TransactionFormData, Transaction } from '@/types'
+import { TransactionFormData } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
         { error: 'Invalid token' },
@@ -36,11 +36,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create transaction title
+    const title = description || `${type === 'income' ? 'Income' : 'Expense'} - ${amount}`
+
     // Create transaction
     const newTransaction = await cosmic.objects.insertOne({
       type: 'transactions',
-      title: description || `${type === 'income' ? 'Income' : 'Expense'} - ${amount}`,
-      slug: generateSlug(`${type}-${amount}-${payload.userId}-${Date.now()}`),
+      title,
+      slug: generateSlug(title + '-' + payload.userId + '-' + Date.now()),
       metadata: {
         user: payload.userId,
         type: {
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
         },
         amount: parseFloat(amount.toString()),
         category,
-        description: description || '',
+        description,
         date
       }
     })
@@ -77,7 +80,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
         { error: 'Invalid token' },
@@ -85,7 +88,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get transactions
+    // Get transactions with category data
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',
@@ -94,14 +97,7 @@ export async function GET(request: NextRequest) {
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
 
-    let transactions = transactionsResponse.objects as Transaction[]
-
-    // Sort transactions by date (newest first)
-    transactions = transactions.sort((a: Transaction, b: Transaction) => {
-      const dateA = new Date(a.metadata?.date || '').getTime()
-      const dateB = new Date(b.metadata?.date || '').getTime()
-      return dateB - dateA
-    })
+    const transactions = transactionsResponse.objects
 
     return NextResponse.json({ transactions })
   } catch (error) {

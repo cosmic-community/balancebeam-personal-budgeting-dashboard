@@ -97,7 +97,7 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  const payload = verifyJWT(token)
+  const payload = await verifyJWT(token)
   if (!payload) {
     redirect('/login')
   }
