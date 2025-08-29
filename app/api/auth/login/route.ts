@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { signJWT, comparePasswords } from '@/lib/auth'
-import { User, LoginRequest } from '@/types'
+import { createJWT } from '@/lib/auth'
+import { User } from '@/types'
+import bcrypt from 'bcrypt'
 
 export async function POST(request: NextRequest) {
   try {
-    const body: LoginRequest = await request.json()
-    const { email, password } = body
+    const { email, password } = await request.json()
 
     // Validate input
     if (!email || !password) {
@@ -17,70 +17,60 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by email
-    const userResponse = await cosmic.objects
-      .find({ 
+    let user: User | null = null
+    try {
+      const userResponse = await cosmic.objects.find({
         type: 'users',
-        'metadata.email': email 
-      })
-      .props(['id', 'title', 'slug', 'metadata'])
+        'metadata.email': email
+      }).props(['id', 'title', 'slug', 'metadata'])
+      
+      if (userResponse.objects && userResponse.objects.length > 0) {
+        user = userResponse.objects[0] as User
+      }
+    } catch (error) {
+      if (hasStatus(error) && error.status === 404) {
+        // User not found, continue to return error below
+      } else {
+        throw error
+      }
+    }
 
-    const users = userResponse.objects as User[]
-    
-    if (users.length === 0) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       )
     }
-
-    const user = users[0]
 
     // Verify password
-    if (!comparePasswords(password, user.metadata.password_hash)) {
+    const isValidPassword = await bcrypt.compare(password, user.metadata.password_hash)
+
+    if (!isValidPassword) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       )
     }
 
-    // Generate JWT
-    const token = await signJWT({
+    // Create JWT token - user is guaranteed to exist here
+    const token = await createJWT({
       userId: user.id,
-      email: user.metadata.email
+      email: user.metadata.email,
     })
 
-    // Create response with user data
-    const userData = {
-      id: user.id,
-      email: user.metadata.email,
-      full_name: user.metadata.full_name,
-      dark_mode: user.metadata.dark_mode || false
-    }
-
-    const response = NextResponse.json({
-      user: userData,
+    // Return user data and token - user is guaranteed to exist here
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.metadata.email,
+        full_name: user.metadata.full_name,
+        dark_mode: user.metadata.dark_mode || false
+      },
       token
     })
 
-    // Set cookie
-    response.cookies.set('auth-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7 // 7 days
-    })
-
-    return response
   } catch (error) {
     console.error('Login error:', error)
-    
-    if (hasStatus(error) && error.status === 404) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      )
-    }
-
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
