@@ -1,0 +1,149 @@
+// Base Cosmic object interface
+export interface CosmicObject {
+  id: string;
+  slug: string;
+  title: string;
+  content?: string;
+  metadata: Record<string, any>;
+  type: string;
+  created_at: string;
+  modified_at: string;
+}
+
+// User object type
+export interface User extends CosmicObject {
+  type: 'users';
+  metadata: {
+    full_name: string;
+    email: string;
+    password_hash: string;
+    dark_mode?: boolean;
+    created_at: string;
+  };
+}
+
+// Transaction object type
+export interface Transaction extends CosmicObject {
+  type: 'transactions';
+  metadata: {
+    user: User;
+    type: {
+      key: 'income' | 'expense';
+      value: 'Income' | 'Expense';
+    };
+    amount: number;
+    category: Category;
+    description?: string;
+    date: string;
+  };
+}
+
+// Category object type
+export interface Category extends CosmicObject {
+  type: 'categories';
+  metadata: {
+    user: User;
+    name: string;
+    color: string;
+    type: {
+      key: 'income' | 'expense';
+      value: 'Income' | 'Expense';
+    };
+  };
+}
+
+// API response types
+export interface CosmicResponse<T> {
+  objects: T[];
+  total: number;
+  limit: number;
+  skip: number;
+}
+
+// Type literals for select-dropdown values (case-sensitive)
+export type TransactionType = 'income' | 'expense';
+export type CategoryType = 'income' | 'expense';
+
+// Auth types
+export interface AuthUser {
+  id: string;
+  email: string;
+  full_name: string;
+  dark_mode: boolean;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  full_name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface JWTPayload {
+  userId: string;
+  email: string;
+  iat?: number;
+  exp?: number;
+}
+
+// Dashboard data types
+export interface DashboardStats {
+  totalIncome: number;
+  totalExpenses: number;
+  netBalance: number;
+  recentTransactions: Transaction[];
+  categoryBreakdown: CategoryBreakdownItem[];
+  monthlyData: MonthlyDataItem[];
+}
+
+export interface CategoryBreakdownItem {
+  name: string;
+  amount: number;
+  color: string;
+  percentage: number;
+}
+
+export interface MonthlyDataItem {
+  month: string;
+  income: number;
+  expenses: number;
+  net: number;
+}
+
+// Form data types
+export interface TransactionFormData {
+  type: TransactionType;
+  amount: number;
+  category: string; // Category ID
+  description?: string;
+  date: string;
+}
+
+export interface CategoryFormData {
+  name: string;
+  color: string;
+  type: CategoryType;
+}
+
+// Type guards for runtime validation
+export function isUser(obj: CosmicObject): obj is User {
+  return obj.type === 'users';
+}
+
+export function isTransaction(obj: CosmicObject): obj is Transaction {
+  return obj.type === 'transactions';
+}
+
+export function isCategory(obj: CosmicObject): obj is Category {
+  return obj.type === 'categories';
+}
+
+// Utility types
+export type CreateTransactionData = Omit<Transaction, 'id' | 'created_at' | 'modified_at' | 'slug'>;
+export type CreateCategoryData = Omit<Category, 'id' | 'created_at' | 'modified_at' | 'slug'>;
+export type CreateUserData = Omit<User, 'id' | 'created_at' | 'modified_at' | 'slug'>;
