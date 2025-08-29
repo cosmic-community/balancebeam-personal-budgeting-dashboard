@@ -1,30 +1,28 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Transaction, Category, TransactionFormData } from '@/types'
+import { Transaction, Category, TransactionFormData, TransactionsListProps } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
-interface TransactionsListProps {
-  transactions: Transaction[]
-  categories: Category[]
-  userId: string
-}
-
-export default function TransactionsList({ 
-  transactions: initialTransactions, 
-  categories, 
-  userId 
-}: TransactionsListProps) {
+export default function TransactionsList({ transactions: initialTransactions, categories, userId }: TransactionsListProps) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
-    category: categories[0]?.id || '', // Safe fallback with proper type
+    category: categories[0]?.id || '', // Safe access with fallback
     description: '',
     date: new Date().toISOString().split('T')[0]
   })
+
+  // Update form data when categories change
+  useEffect(() => {
+    if (categories.length > 0 && !formData.category) {
+      setFormData(prev => ({ ...prev, category: categories[0].id }))
+    }
+  }, [categories, formData.category])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,35 +30,50 @@ export default function TransactionsList({
 
     try {
       const token = localStorage.getItem('auth-token')
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
+      const url = editingId ? `/api/transactions/${editingId}` : '/api/transactions'
+      const method = editingId ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token || ''}` // Safe string interpolation
         },
         body: JSON.stringify(formData)
       })
 
       if (response.ok) {
         const data = await response.json()
-        setTransactions(prev => [data.transaction, ...prev])
-        setFormData({
-          type: 'expense',
-          amount: 0,
-          category: categories[0]?.id || '', // Safe fallback with proper type
-          description: '',
-          date: new Date().toISOString().split('T')[0]
-        })
-        setShowForm(false)
+        
+        if (editingId) {
+          setTransactions(prev => prev.map(t => t.id === editingId ? data.transaction : t))
+          setEditingId(null)
+        } else {
+          setTransactions(prev => [data.transaction, ...prev])
+        }
+        
+        resetForm()
       } else {
-        throw new Error('Failed to create transaction')
+        throw new Error('Failed to save transaction')
       }
     } catch (error) {
-      console.error('Transaction creation error:', error)
-      alert('Failed to create transaction. Please try again.')
+      console.error('Transaction save error:', error)
+      alert('Failed to save transaction. Please try again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleEdit = (transaction: Transaction) => {
+    setEditingId(transaction.id)
+    setFormData({
+      type: transaction.metadata.type?.key || 'expense',
+      amount: transaction.metadata.amount || 0,
+      category: transaction.metadata.category?.id || categories[0]?.id || '', // Safe access with fallback
+      description: transaction.metadata.description || '',
+      date: transaction.metadata.date || new Date().toISOString().split('T')[0]
+    })
+    setShowForm(true)
   }
 
   const handleDelete = async (transactionId: string) => {
@@ -71,7 +84,7 @@ export default function TransactionsList({
       const response = await fetch(`/api/transactions/${transactionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token || ''}` // Safe string interpolation
         }
       })
 
@@ -81,9 +94,25 @@ export default function TransactionsList({
         throw new Error('Failed to delete transaction')
       }
     } catch (error) {
-      console.error('Transaction deletion error:', error)
+      console.error('Transaction delete error:', error)
       alert('Failed to delete transaction. Please try again.')
     }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      type: 'expense',
+      amount: 0,
+      category: categories[0]?.id || '', // Safe access with fallback
+      description: '',
+      date: new Date().toISOString().split('T')[0]
+    })
+    setShowForm(false)
+    setEditingId(null)
+  }
+
+  const getCategoryById = (categoryId: string): Category | undefined => {
+    return categories.find(cat => cat.id === categoryId)
   }
 
   return (
@@ -128,7 +157,6 @@ export default function TransactionsList({
                 <input
                   type="number"
                   step="0.01"
-                  min="0"
                   value={formData.amount}
                   onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
                   className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
@@ -137,43 +165,28 @@ export default function TransactionsList({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                  Category
-                </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
-                  required
-                >
-                  {categories.length === 0 ? (
-                    <option value="">No categories available</option>
-                  ) : (
-                    categories
-                      .filter(cat => cat.metadata.type?.key === formData.type)
-                      .map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.metadata.name}
-                        </option>
-                      ))
-                  )}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
-                  required
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                Category
+              </label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
+                required
+              >
+                {categories.length === 0 ? (
+                  <option value="">No categories available</option>
+                ) : (
+                  categories
+                    .filter(cat => cat.metadata.type?.key === formData.type)
+                    .map(category => (
+                      <option key={category.id} value={category.id}>
+                        {category.metadata.name}
+                      </option>
+                    ))
+                )}
+              </select>
             </div>
 
             <div>
@@ -189,12 +202,25 @@ export default function TransactionsList({
               />
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
+                required
+              />
+            </div>
+
             <button
               type="submit"
               disabled={loading || categories.length === 0}
               className="w-full btn-primary text-sm py-2 disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create Transaction'}
+              {loading ? (editingId ? 'Updating...' : 'Creating...') : (editingId ? 'Update Transaction' : 'Create Transaction')}
             </button>
           </form>
         </div>
@@ -203,32 +229,32 @@ export default function TransactionsList({
       <div className="space-y-3">
         {transactions.length === 0 ? (
           <p className="text-text-secondary-light dark:text-text-secondary-dark text-center py-8">
-            No transactions yet. Add your first transaction above.
+            No transactions yet. Create your first transaction above.
           </p>
         ) : (
           transactions.map((transaction) => {
+            const category = transaction.metadata.category
             const isIncome = transaction.metadata.type?.key === 'income'
-            const categoryColor = transaction.metadata.category?.metadata?.color || '#6B7280'
             
             return (
               <div 
                 key={transaction.id} 
                 className="flex items-center justify-between p-4 bg-surface-light dark:bg-surface-dark rounded-lg"
               >
-                <div className="flex items-center space-x-3">
-                  <div 
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: categoryColor }}
-                  />
+                <div className="flex items-center space-x-4">
+                  {category && (
+                    <div 
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: category.metadata.color }}
+                    />
+                  )}
                   <div>
-                    <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                    <h4 className="font-medium text-text-primary-light dark:text-text-primary-dark">
                       {transaction.title}
+                    </h4>
+                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                      {category?.metadata.name || 'No Category'} • {formatDate(transaction.metadata.date)}
                     </p>
-                    <div className="flex items-center space-x-2 text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                      <span>{transaction.metadata.category?.metadata?.name || 'Unknown Category'}</span>
-                      <span>•</span>
-                      <span>{formatDate(transaction.metadata.date)}</span>
-                    </div>
                     {transaction.metadata.description && (
                       <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
                         {transaction.metadata.description}
@@ -236,21 +262,30 @@ export default function TransactionsList({
                     )}
                   </div>
                 </div>
+                
                 <div className="flex items-center space-x-3">
-                  <div className="text-right">
-                    <p className={`font-semibold ${isIncome ? 'text-success' : 'text-error'}`}>
-                      {isIncome ? '+' : '-'}{formatCurrency(Math.abs(transaction.metadata.amount || 0))}
-                    </p>
-                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                      {transaction.metadata.type?.value || 'Unknown'}
-                    </p>
+                  <span className={`font-semibold ${
+                    isIncome 
+                      ? 'text-success' 
+                      : 'text-error'
+                  }`}>
+                    {isIncome ? '+' : '-'}{formatCurrency(Math.abs(transaction.metadata.amount || 0))}
+                  </span>
+                  
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleEdit(transaction)}
+                      className="text-primary hover:text-primary-dark text-sm px-2 py-1 rounded"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
+                    >
+                      Delete
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleDelete(transaction.id)}
-                    className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
-                  >
-                    Delete
-                  </button>
                 </div>
               </div>
             )
