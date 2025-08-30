@@ -2,33 +2,23 @@ import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-min-32-chars-long'
+const secret = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'fallback-secret-key-change-in-production'
 )
 
-// Hash password for storage
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
-}
+const ALGORITHM = 'HS256'
 
-// Compare provided password with stored hash
-export async function comparePasswords(password: string, hashedPassword: string): Promise<boolean> {
-  return bcrypt.compare(password, hashedPassword)
-}
-
-// Create and sign JWT token
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
+  return await new SignJWT(payload)
+    .setProtectedHeader({ alg: ALGORITHM })
     .setIssuedAt()
-    .setExpirationTime('24h')
-    .sign(JWT_SECRET)
+    .setExpirationTime('7d')
+    .sign(secret)
 }
 
-// Verify JWT token and return payload
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
     console.error('JWT verification failed:', error)
@@ -36,31 +26,33 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   }
 }
 
-// Extract token from Authorization header
+export async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12
+  return await bcrypt.hash(password, saltRounds)
+}
+
+export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  try {
+    return await bcrypt.compare(password, hashedPassword)
+  } catch (error) {
+    console.error('Password verification failed:', error)
+    return false
+  }
+}
+
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
-  // Handle "Bearer token" format
+  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
   
-  // Handle direct token
+  // Handle cookie format (extract auth-token)
+  if (authHeader.includes('auth-token=')) {
+    const match = authHeader.match(/auth-token=([^;]+)/)
+    return match ? match[1] : null
+  }
+  
   return authHeader
-}
-
-// Generate secure random token for password reset
-export function generateResetToken(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36)
-}
-
-// Validate email format
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-// Validate password strength (minimum 6 characters)
-export function isValidPassword(password: string): boolean {
-  return password.length >= 6
 }
