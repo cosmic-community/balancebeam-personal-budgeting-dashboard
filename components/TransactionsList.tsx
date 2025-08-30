@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Transaction, Category, TransactionFormData } from '@/types'
+import { Transaction, Category, TransactionFormData, isPopulatedCategory } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface TransactionsListProps {
@@ -36,10 +36,15 @@ export default function TransactionsList({ transactions: initialTransactions, ca
   }
 
   const handleEdit = (transaction: Transaction) => {
+    // Safe category ID extraction with proper type checking
+    const categoryId = isPopulatedCategory(transaction.metadata.category) 
+      ? transaction.metadata.category.id 
+      : (typeof transaction.metadata.category === 'string' ? transaction.metadata.category : '')
+
     setFormData({
       type: transaction.metadata.type?.key || 'expense',
       amount: transaction.metadata.amount || 0,
-      category: transaction.metadata.category?.id || '',
+      category: categoryId,
       description: transaction.metadata.description || '',
       date: transaction.metadata.date || new Date().toISOString().split('T')[0]
     })
@@ -52,7 +57,7 @@ export default function TransactionsList({ transactions: initialTransactions, ca
     setLoading(true)
 
     try {
-      const token = localStorage.getItem('auth-token')
+      const token = localStorage.getItem('auth-token') || ''
       const url = editingTransaction 
         ? `/api/transactions/${editingTransaction.id}`
         : '/api/transactions'
@@ -62,7 +67,7 @@ export default function TransactionsList({ transactions: initialTransactions, ca
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token || ''}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(formData)
       })
@@ -92,11 +97,11 @@ export default function TransactionsList({ transactions: initialTransactions, ca
     if (!confirm('Are you sure you want to delete this transaction?')) return
 
     try {
-      const token = localStorage.getItem('auth-token')
+      const token = localStorage.getItem('auth-token') || ''
       const response = await fetch(`/api/transactions/${transactionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token || ''}`
+          'Authorization': `Bearer ${token}`
         }
       })
 
@@ -117,6 +122,19 @@ export default function TransactionsList({ transactions: initialTransactions, ca
 
   const getTransactionColor = (type: string | undefined) => {
     return type === 'income' ? 'text-success' : 'text-error'
+  }
+
+  // Safe helper functions for extracting transaction data
+  const getCategoryName = (category: Category | string | undefined): string => {
+    if (!category) return 'No Category'
+    if (typeof category === 'string') return 'Unknown Category'
+    return category.metadata?.name || 'Unknown Category'
+  }
+
+  const getCategoryColor = (category: Category | string | undefined): string => {
+    if (!category) return '#6B7280'
+    if (typeof category === 'string') return '#6B7280'
+    return category.metadata?.color || '#6B7280'
   }
 
   return (
@@ -256,11 +274,11 @@ export default function TransactionsList({ transactions: initialTransactions, ca
                       </h4>
                       <span 
                         className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: transaction.metadata.category?.metadata?.color || '#6B7280' }}
+                        style={{ backgroundColor: getCategoryColor(transaction.metadata.category) }}
                       />
                     </div>
                     <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                      {transaction.metadata.category?.metadata?.name || 'No Category'} • {formatDate(transaction.metadata.date || '')}
+                      {getCategoryName(transaction.metadata.category)} • {formatDate(transaction.metadata.date || '')}
                     </p>
                     {transaction.metadata.description && (
                       <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
