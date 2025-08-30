@@ -3,118 +3,123 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useAuth } from '@/components/AuthProvider'
 import { LoginRequest } from '@/types'
 
 export default function LoginForm() {
+  const router = useRouter()
   const [formData, setFormData] = useState<LoginRequest>({
     email: '',
     password: ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  
-  const { login } = useAuth()
-  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
     setLoading(true)
+    setError('')
 
-    const result = await login(formData)
-    
-    if (result.success) {
-      router.push('/dashboard')
-    } else {
-      setError(result.error || 'Login failed')
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Store token in localStorage for client-side access
+        if (data.token) {
+          localStorage.setItem('auth-token', data.token)
+        }
+
+        // Store user data
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user))
+        }
+
+        // Redirect to dashboard
+        router.push('/dashboard')
+        router.refresh() // Refresh to update server-side auth state
+      } else {
+        setError(data.error || 'Login failed')
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      setError('An unexpected error occurred. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background-light dark:bg-background-dark py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-text-primary-light dark:text-text-primary-dark">
-            Sign in to your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-text-secondary-light dark:text-text-secondary-dark">
-            Or{' '}
-            <Link 
-              href="/signup" 
-              className="font-medium text-primary-light dark:text-primary-dark hover:text-primary-dark dark:hover:text-primary-light"
-            >
-              create a new account
-            </Link>
-          </p>
+    <div className="w-full max-w-md">
+      <div className="card">
+        <div className="card-header text-center">
+          <h2 className="card-title">Welcome Back</h2>
+          <p className="card-subtitle">Sign in to your account</p>
         </div>
-
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="rounded-md bg-error bg-opacity-10 p-4">
-              <div className="text-sm text-error font-medium">
-                {error}
-              </div>
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
             </div>
           )}
 
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-                placeholder="Enter your email"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-                placeholder="Enter your password"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-accent focus:border-accent outline-none transition-colors"
+              placeholder="Enter your email"
+              required
+              autoComplete="email"
+            />
           </div>
 
           <div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-light dark:bg-primary-dark hover:bg-primary-dark dark:hover:bg-primary-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-light dark:focus:ring-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder:text-text-secondary-light dark:placeholder:text-text-secondary-dark focus:ring-2 focus:ring-accent focus:border-accent outline-none transition-colors"
+              placeholder="Enter your password"
+              required
+              autoComplete="current-password"
+            />
           </div>
 
-          <div className="text-center">
-            <Link 
-              href="/" 
-              className="text-sm text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark"
-            >
-              ← Back to home
-            </Link>
-          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full btn-primary"
+          >
+            {loading ? 'Signing In...' : 'Sign In'}
+          </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+            Don't have an account?{' '}
+            <Link 
+              href="/signup" 
+              className="text-accent hover:text-accent-hover font-medium"
+            >
+              Sign up
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   )

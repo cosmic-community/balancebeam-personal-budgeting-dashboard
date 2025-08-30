@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
+import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
+import { User } from '@/types'
 
 export async function GET(request: NextRequest) {
   try {
-    // Extract token from Authorization header
+    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -15,7 +16,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Verify JWT token
     const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
@@ -24,31 +24,24 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get user from Cosmic
+    // Get user data
     try {
-      const { object: user } = await cosmic.objects
-        .findOne({ 
-          type: 'users', 
-          id: payload.userId 
-        })
-        .props(['id', 'title', 'metadata'])
+      const userResponse = await cosmic.objects.findOne({
+        type: 'users',
+        id: payload.userId
+      })
 
-      if (!user) {
-        return NextResponse.json(
-          { error: 'User not found' },
-          { status: 404 }
-        )
+      const user = userResponse.object as User
+
+      // Return user data (excluding password)
+      const userData = {
+        id: user.id,
+        email: user.metadata.email,
+        full_name: user.metadata.full_name,
+        dark_mode: user.metadata.dark_mode || false
       }
 
-      // Return user data (excluding sensitive information)
-      return NextResponse.json({
-        user: {
-          id: user.id,
-          email: user.metadata.email,
-          full_name: user.metadata.full_name,
-          dark_mode: user.metadata.dark_mode ?? false
-        }
-      })
+      return NextResponse.json({ user: userData })
     } catch (error) {
       if (hasStatus(error) && error.status === 404) {
         return NextResponse.json(
@@ -69,7 +62,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    // Extract token from Authorization header
+    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -80,7 +73,6 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Verify JWT token
     const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
@@ -89,36 +81,33 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // Get update data from request body
     const body = await request.json()
     const { full_name, dark_mode } = body
 
-    // Build update object with only provided fields
+    // Update user data (only allow safe fields)
     const updateData: any = {}
-    
-    if (full_name !== undefined) {
-      updateData.title = full_name
-      updateData['metadata.full_name'] = full_name
-    }
-    
-    if (dark_mode !== undefined) {
-      updateData['metadata.dark_mode'] = Boolean(dark_mode)
+    if (full_name !== undefined) updateData['metadata.full_name'] = full_name
+    if (dark_mode !== undefined) updateData['metadata.dark_mode'] = dark_mode
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields to update' },
+        { status: 400 }
+      )
     }
 
-    // Update user in Cosmic
-    const { object: updatedUser } = await cosmic.objects.updateOne(
-      payload.userId,
-      updateData
-    )
+    const updatedUser = await cosmic.objects.updateOne(payload.userId, updateData)
+    const user = updatedUser.object as User
 
-    return NextResponse.json({
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.metadata.email,
-        full_name: updatedUser.metadata.full_name,
-        dark_mode: updatedUser.metadata.dark_mode ?? false
-      }
-    })
+    // Return updated user data (excluding password)
+    const userData = {
+      id: user.id,
+      email: user.metadata.email,
+      full_name: user.metadata.full_name,
+      dark_mode: user.metadata.dark_mode || false
+    }
+
+    return NextResponse.json({ user: userData })
   } catch (error) {
     console.error('User update error:', error)
     return NextResponse.json(
