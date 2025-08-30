@@ -63,16 +63,19 @@ export function calculateCategoryBreakdown(transactions: any[]): any[] {
   const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
   
   transactions.forEach(transaction => {
+    // Add proper undefined checks for transaction metadata
+    if (!transaction?.metadata) return
+    
     const categoryId = typeof transaction.metadata.category === 'object' 
-      ? transaction.metadata.category.id 
-      : transaction.metadata.category
+      ? transaction.metadata.category?.id || 'unknown'
+      : transaction.metadata.category || 'unknown'
     
     const categoryName = typeof transaction.metadata.category === 'object'
-      ? transaction.metadata.category.metadata?.name || 'Unknown'
+      ? transaction.metadata.category?.metadata?.name || 'Unknown'
       : 'Unknown'
       
     const categoryColor = typeof transaction.metadata.category === 'object'
-      ? transaction.metadata.category.metadata?.color || '#999999'
+      ? transaction.metadata.category?.metadata?.color || '#999999'
       : '#999999'
     
     const amount = Math.abs(transaction.metadata.amount || 0)
@@ -102,6 +105,9 @@ export function calculateMonthlyData(transactions: any[]): any[] {
   const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
   
   transactions.forEach(transaction => {
+    // Add proper undefined checks for transaction metadata
+    if (!transaction?.metadata) return
+    
     const date = new Date(transaction.metadata.date || transaction.created_at)
     const monthKey = date.toISOString().substring(0, 7) // YYYY-MM format
     
@@ -123,8 +129,8 @@ export function calculateMonthlyData(transactions: any[]): any[] {
   
   return months.map(month => ({
     month,
-    income: monthlyTotals[month].income,
-    expenses: monthlyTotals[month].expenses,
-    net: monthlyTotals[month].income - monthlyTotals[month].expenses
+    income: monthlyTotals[month]?.income || 0,
+    expenses: monthlyTotals[month]?.expenses || 0,
+    net: (monthlyTotals[month]?.income || 0) - (monthlyTotals[month]?.expenses || 0)
   }))
 }
