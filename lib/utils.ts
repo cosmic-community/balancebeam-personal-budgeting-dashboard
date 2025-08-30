@@ -9,22 +9,41 @@ export function cn(...inputs: ClassValue[]) {
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD'
+    currency: 'USD',
   }).format(amount)
 }
 
-export function formatDate(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toLocaleDateString('en-US', {
+export function formatDate(date: string): string {
+  return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
-    day: 'numeric'
+    day: 'numeric',
   })
 }
 
-export function formatDateForInput(date: Date | string): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toISOString().split('T')[0]
+// Environment variable getters with proper TypeScript null checks
+export function getCosmicBucketSlug(): string {
+  const slug = process.env.COSMIC_BUCKET_SLUG
+  if (!slug) {
+    throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
+  }
+  return slug
+}
+
+export function getCosmicReadKey(): string {
+  const key = process.env.COSMIC_READ_KEY
+  if (!key) {
+    throw new Error('COSMIC_READ_KEY environment variable is required')
+  }
+  return key
+}
+
+export function getCosmicWriteKey(): string {
+  const key = process.env.COSMIC_WRITE_KEY
+  if (!key) {
+    throw new Error('COSMIC_WRITE_KEY environment variable is required')
+  }
+  return key
 }
 
 export function generateSlug(text: string): string {
@@ -35,73 +54,29 @@ export function generateSlug(text: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-export function getCosmicBucketSlug(): string {
-  const slug = process.env.COSMIC_BUCKET_SLUG
-  if (!slug) {
-    throw new Error('COSMIC_BUCKET_SLUG environment variable is not set')
-  }
-  return slug
-}
-
-export function getCosmicReadKey(): string {
-  const key = process.env.COSMIC_READ_KEY
-  if (!key) {
-    throw new Error('COSMIC_READ_KEY environment variable is not set')
-  }
-  return key
-}
-
-export function getCosmicWriteKey(): string {
-  const key = process.env.COSMIC_WRITE_KEY
-  if (!key) {
-    throw new Error('COSMIC_WRITE_KEY environment variable is not set')
-  }
-  return key
-}
-
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
 export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
-  const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
+  const categoryTotals: Record<string, { amount: number; color: string }> = {}
   
   transactions.forEach(transaction => {
-    if (transaction.metadata.type?.key !== 'expense') return
-    
-    const categoryId = typeof transaction.metadata.category === 'object' 
-      ? transaction.metadata.category.id 
-      : transaction.metadata.category || 'unknown'
-    
-    const categoryName = typeof transaction.metadata.category === 'object' 
-      ? transaction.metadata.category.metadata?.name || 'Unknown'
-      : 'Unknown'
-    
-    const categoryColor = typeof transaction.metadata.category === 'object' 
-      ? transaction.metadata.category.metadata?.color || '#999999'
-      : '#999999'
-    
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    
-    if (!categoryTotals[categoryId]) {
-      categoryTotals[categoryId] = {
-        amount: 0,
-        color: categoryColor,
-        name: categoryName
+    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category) {
+      const categoryName = transaction.metadata.category.metadata?.name || 'Unknown'
+      const categoryColor = transaction.metadata.category.metadata?.color || '#999999'
+      const amount = Math.abs(transaction.metadata.amount || 0)
+      
+      if (!categoryTotals[categoryName]) {
+        categoryTotals[categoryName] = { amount: 0, color: categoryColor }
       }
+      categoryTotals[categoryName].amount += amount
     }
-    
-    categoryTotals[categoryId].amount += amount
   })
+
+  const totalAmount = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
   
-  const total = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
-  
-  return Object.values(categoryTotals).map(category => ({
-    name: category.name,
-    amount: category.amount,
-    color: category.color,
-    percentage: total > 0 ? (category.amount / total) * 100 : 0
+  return Object.entries(categoryTotals).map(([name, data]) => ({
+    name,
+    amount: data.amount,
+    color: data.color,
+    percentage: totalAmount > 0 ? (data.amount / totalAmount) * 100 : 0
   }))
 }
 
@@ -116,18 +91,18 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
       monthlyTotals[monthKey] = { income: 0, expenses: 0 }
     }
     
-    const amount = transaction.metadata.amount || 0
+    const amount = Math.abs(transaction.metadata.amount || 0)
     if (transaction.metadata.type?.key === 'income') {
       monthlyTotals[monthKey].income += amount
     } else {
-      monthlyTotals[monthKey].expenses += Math.abs(amount)
+      monthlyTotals[monthKey].expenses += amount
     }
   })
-  
+
   return Object.entries(monthlyTotals)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([monthKey, data]) => ({
-      month: new Date(monthKey + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+    .map(([month, data]) => ({
+      month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
       income: data.income,
       expenses: data.expenses,
       net: data.income - data.expenses
