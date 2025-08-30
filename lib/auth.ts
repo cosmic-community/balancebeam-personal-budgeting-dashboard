@@ -1,9 +1,10 @@
-import * as jose from 'jose'
 import bcrypt from 'bcrypt'
+import { SignJWT, jwtVerify } from 'jose'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development'
-const secret = new TextEncoder().encode(JWT_SECRET)
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'fallback-secret-key-for-development-only'
+)
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12)
@@ -14,18 +15,16 @@ export async function verifyPassword(password: string, hashedPassword: string): 
 }
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  const jwt = await new jose.SignJWT(payload)
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(secret)
-  
-  return jwt
+    .sign(JWT_SECRET)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jose.jwtVerify(token, secret)
+    const { payload } = await jwtVerify(token, JWT_SECRET)
     return payload as JWTPayload
   } catch (error) {
     console.error('JWT verification error:', error)
@@ -34,19 +33,22 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
-  if (!authHeader) return null
-  
-  // Handle "Bearer token" format
+  if (!authHeader) {
+    return null
+  }
+
+  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
-  
-  // Handle direct token or cookie format
+
+  // Handle cookie format (for server-side extraction)
   if (authHeader.includes('auth-token=')) {
-    const match = authHeader.match(/auth-token=([^;]+)/)
-    return match ? match[1] : null
+    const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
+    return tokenMatch ? tokenMatch[1] : null
   }
-  
-  // Return as-is if it's just the token
-  return authHeader
+
+  // Return the header as-is if it doesn't match expected formats
+  // but ensure we return null instead of undefined for type safety
+  return authHeader || null
 }
