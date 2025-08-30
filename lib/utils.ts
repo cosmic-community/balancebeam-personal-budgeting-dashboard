@@ -1,5 +1,6 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -8,93 +9,51 @@ export function cn(...inputs: ClassValue[]) {
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'USD'
   }).format(amount)
-}
-
-export function formatDate(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
 }
 
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '')
+    .replace(/[^a-z0-9 -]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
 }
 
-// Email validation utility
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
+export function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
 }
 
-// Password validation utility
-export function validatePassword(password: string): { isValid: boolean; errors: string[] } {
-  const errors: string[] = []
-  
-  if (password.length < 8) {
-    errors.push('Password must be at least 8 characters long')
+export function calculateCategoryBreakdown(expenseTransactions: Transaction[]): CategoryBreakdownItem[] {
+  if (!expenseTransactions || expenseTransactions.length === 0) {
+    return []
   }
-  
-  if (!/[A-Z]/.test(password)) {
-    errors.push('Password must contain at least one uppercase letter')
-  }
-  
-  if (!/[a-z]/.test(password)) {
-    errors.push('Password must contain at least one lowercase letter')
-  }
-  
-  if (!/\d/.test(password)) {
-    errors.push('Password must contain at least one number')
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors
-  }
-}
-
-// Format date for HTML input fields
-export function formatDateForInput(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toISOString().split('T')[0]
-}
-
-// Dashboard calculation utilities
-import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
-
-export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
-  if (!transactions || transactions.length === 0) return []
 
   const categoryTotals = new Map<string, { amount: number; color: string; name: string }>()
   let totalExpenses = 0
 
-  // Calculate totals by category
-  transactions.forEach((transaction) => {
+  expenseTransactions.forEach(transaction => {
     const amount = Math.abs(transaction.metadata.amount || 0)
     totalExpenses += amount
 
-    // Get category info safely
-    let categoryName = 'Unknown'
+    // Handle category data safely
+    let categoryName = 'Unknown Category'
     let categoryColor = '#999999'
 
     if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
-      categoryName = transaction.metadata.category.metadata.name || 'Unknown'
+      categoryName = transaction.metadata.category.metadata.name || 'Unknown Category'
       categoryColor = transaction.metadata.category.metadata.color || '#999999'
     }
 
-    if (categoryTotals.has(categoryName)) {
-      const existing = categoryTotals.get(categoryName)!
-      categoryTotals.set(categoryName, {
-        ...existing,
-        amount: existing.amount + amount
-      })
+    const existing = categoryTotals.get(categoryName)
+    if (existing) {
+      existing.amount += amount
     } else {
       categoryTotals.set(categoryName, {
         amount,
@@ -105,86 +64,124 @@ export function calculateCategoryBreakdown(transactions: Transaction[]): Categor
   })
 
   // Convert to array and calculate percentages
-  const breakdown: CategoryBreakdownItem[] = Array.from(categoryTotals.values()).map(category => ({
-    name: category.name,
-    amount: category.amount,
-    color: category.color,
-    percentage: totalExpenses > 0 ? Math.round((category.amount / totalExpenses) * 100) : 0
+  const breakdown: CategoryBreakdownItem[] = Array.from(categoryTotals.entries()).map(([name, data]) => ({
+    name: data.name,
+    amount: data.amount,
+    color: data.color,
+    percentage: totalExpenses > 0 ? Math.round((data.amount / totalExpenses) * 100) : 0
   }))
 
-  // Sort by amount descending
+  // Sort by amount (highest first)
   return breakdown.sort((a, b) => b.amount - a.amount)
 }
 
 export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  if (!transactions || transactions.length === 0) return []
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
 
   const monthlyTotals = new Map<string, { income: number; expenses: number }>()
 
-  // Group transactions by month
-  transactions.forEach((transaction) => {
+  transactions.forEach(transaction => {
     const date = new Date(transaction.metadata.date)
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const monthKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
     const amount = Math.abs(transaction.metadata.amount || 0)
-    
-    if (!monthlyTotals.has(monthKey)) {
-      monthlyTotals.set(monthKey, { income: 0, expenses: 0 })
-    }
 
-    const monthly = monthlyTotals.get(monthKey)!
+    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
     
     if (transaction.metadata.type?.key === 'income') {
-      monthly.income += amount
+      existing.income += amount
     } else {
-      monthly.expenses += amount
+      existing.expenses += amount
     }
+
+    monthlyTotals.set(monthKey, existing)
   })
 
-  // Convert to array and format
-  const monthlyData: MonthlyDataItem[] = Array.from(monthlyTotals.entries()).map(([monthKey, totals]) => {
-    const [year, month] = monthKey.split('-')
-    const date = new Date(parseInt(year), parseInt(month) - 1)
-    const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  // Convert to array and calculate net
+  const monthlyData: MonthlyDataItem[] = Array.from(monthlyTotals.entries()).map(([month, data]) => ({
+    month,
+    income: data.income,
+    expenses: data.expenses,
+    net: data.income - data.expenses
+  }))
 
-    return {
-      month: monthName,
-      income: totals.income,
-      expenses: totals.expenses,
-      net: totals.income - totals.expenses
-    }
-  })
-
-  // Sort by date
-  return monthlyData.sort((a, b) => {
-    const dateA = new Date(a.month)
-    const dateB = new Date(b.month)
-    return dateA.getTime() - dateB.getTime()
-  })
+  // Sort by date (most recent first)
+  return monthlyData.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
 }
 
-// Hash password utility with proper parameter validation
-export async function hashPassword(password: string): Promise<string> {
-  // Validate password parameter
-  if (!password || typeof password !== 'string') {
-    throw new Error('Password must be a valid string')
+// Safe environment variable getters with proper TypeScript handling
+export function getRequiredEnvVar(key: string): string {
+  const value = process.env[key]
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${key}`)
   }
-
-  const bcrypt = await import('bcryptjs')
-  const saltRounds = 12
-  return bcrypt.hash(password, saltRounds)
+  return value
 }
 
-// Compare password utility with proper parameter validation
-export async function comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
-  // Validate parameters
-  if (!plainPassword || typeof plainPassword !== 'string') {
-    throw new Error('Plain password must be a valid string')
+export function getCosmicBucketSlug(): string {
+  return getRequiredEnvVar('COSMIC_BUCKET_SLUG')
+}
+
+export function getCosmicReadKey(): string {
+  return getRequiredEnvVar('COSMIC_READ_KEY')
+}
+
+export function getCosmicWriteKey(): string {
+  return getRequiredEnvVar('COSMIC_WRITE_KEY')
+}
+
+// JWT Secret getter with validation
+export function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required')
+  }
+  if (secret.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters long')
+  }
+  return secret
+}
+
+// Safe string to number conversion
+export function safeParseFloat(value: string | number | undefined): number {
+  if (typeof value === 'number') return value
+  if (!value || typeof value !== 'string') return 0
+  
+  const parsed = parseFloat(value)
+  return isNaN(parsed) ? 0 : parsed
+}
+
+// Safe date formatting
+export function safeDateFormat(dateString: string | undefined): string {
+  if (!dateString) return 'No date'
+  
+  try {
+    return formatDate(dateString)
+  } catch {
+    return 'Invalid date'
+  }
+}
+
+// Generate crypto-secure random string for tokens
+export function generateSecureToken(length: number = 32): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  
+  // Use crypto.getRandomValues if available (browser/Node.js with crypto)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const array = new Uint8Array(length)
+    crypto.getRandomValues(array)
+    
+    for (let i = 0; i < length; i++) {
+      result += chars[array[i] % chars.length]
+    }
+  } else {
+    // Fallback to Math.random (less secure but functional)
+    for (let i = 0; i < length; i++) {
+      result += chars[Math.floor(Math.random() * chars.length)]
+    }
   }
   
-  if (!hashedPassword || typeof hashedPassword !== 'string') {
-    throw new Error('Hashed password must be a valid string')
-  }
-
-  const bcrypt = await import('bcryptjs')
-  return bcrypt.compare(plainPassword, hashedPassword)
+  return result
 }
