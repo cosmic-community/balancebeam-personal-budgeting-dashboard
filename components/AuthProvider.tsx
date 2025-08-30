@@ -1,14 +1,15 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { AuthUser } from '@/types'
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
+import { AuthUser, LoginRequest, RegisterRequest } from '@/types'
 
 interface AuthContextType {
   user: AuthUser | null
-  login: (user: AuthUser, token: string) => void
+  isLoading: boolean
+  login: (credentials: LoginRequest) => Promise<boolean>
+  register: (userData: RegisterRequest) => Promise<boolean>
   logout: () => void
-  loading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -27,94 +28,99 @@ interface AuthProviderProps {
 
 export default function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
-  const pathname = usePathname()
 
   useEffect(() => {
-    // Check for existing auth on mount
-    checkAuth()
+    checkAuthStatus()
   }, [])
 
-  const checkAuth = async () => {
+  const checkAuthStatus = async () => {
     try {
       const token = localStorage.getItem('auth-token')
-      const userData = localStorage.getItem('user')
-      
-      if (token && userData) {
-        // Verify token is still valid
-        const response = await fetch('/api/user', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        
-        if (response.ok) {
-          const userInfo = JSON.parse(userData)
-          setUser(userInfo)
-        } else {
-          // Token invalid, clear storage
-          localStorage.removeItem('auth-token')
-          localStorage.removeItem('user')
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+
+      const response = await fetch('/api/user', {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setUser(data.user)
+      } else {
+        localStorage.removeItem('auth-token')
       }
     } catch (error) {
       console.error('Auth check failed:', error)
-      // Clear invalid auth data
       localStorage.removeItem('auth-token')
-      localStorage.removeItem('user')
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const login = (userData: AuthUser, token: string) => {
-    localStorage.setItem('auth-token', token)
-    localStorage.setItem('user', JSON.stringify(userData))
-    setUser(userData)
-  }
-
-  const logout = async () => {
+  const login = async (credentials: LoginRequest): Promise<boolean> => {
     try {
-      // Call logout API to clear server-side cookie
-      await fetch('/api/auth/logout', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('auth-token')}`
-        }
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(credentials)
       })
-    } catch (error) {
-      console.error('Logout API call failed:', error)
-    }
 
-    // Clear client-side data
+      if (response.ok) {
+        const data = await response.json()
+        localStorage.setItem('auth-token', data.token)
+        setUser(data.user)
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Login failed:', error)
+      return false
+    }
+  }
+
+  const register = async (userData: RegisterRequest): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData)
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        localStorage.setItem('auth-token', data.token)
+        setUser(data.user)
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Registration failed:', error)
+      return false
+    }
+  }
+
+  const logout = () => {
     localStorage.removeItem('auth-token')
-    localStorage.removeItem('user')
     setUser(null)
     router.push('/login')
   }
 
-  // Redirect logic
-  useEffect(() => {
-    if (!loading) {
-      const isAuthRoute = pathname === '/login' || pathname === '/signup'
-      const isDashboardRoute = pathname.startsWith('/dashboard')
-      
-      if (!user && isDashboardRoute) {
-        // Not authenticated and trying to access dashboard
-        router.push('/login')
-      } else if (user && isAuthRoute) {
-        // Authenticated and trying to access auth pages
-        router.push('/dashboard')
-      }
-    }
-  }, [user, loading, pathname, router])
-
-  const value = {
+  const value: AuthContextType = {
     user,
+    isLoading,
     login,
-    logout,
-    loading
+    register,
+    logout
   }
 
   return (

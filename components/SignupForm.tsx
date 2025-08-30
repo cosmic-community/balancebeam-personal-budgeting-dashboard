@@ -15,7 +15,6 @@ export default function SignupForm() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  
   const { register } = useAuth()
   const router = useRouter()
 
@@ -23,23 +22,38 @@ export default function SignupForm() {
     e.preventDefault()
     setError('')
 
-    // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
       return
     }
 
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+
     setLoading(true)
 
-    const result = await register(formData)
-    
-    if (result.success) {
-      router.push('/dashboard')
-    } else {
-      setError(result.error || 'Registration failed')
+    try {
+      const success = await register(formData)
+      
+      if (success) {
+        router.push('/dashboard')
+      } else {
+        setError('Registration failed. Please try again.')
+      }
+    } catch (error) {
+      setError('Registration failed. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }))
   }
 
   return (
@@ -50,45 +64,39 @@ export default function SignupForm() {
             Create your account
           </h2>
           <p className="mt-2 text-center text-sm text-text-secondary-light dark:text-text-secondary-dark">
-            Already have an account?{' '}
-            <Link 
-              href="/login" 
-              className="font-medium text-primary-light dark:text-primary-dark hover:text-primary-dark dark:hover:text-primary-light"
-            >
-              Sign in here
+            Or{' '}
+            <Link href="/login" className="font-medium text-accent hover:text-accent-hover">
+              sign in to your existing account
             </Link>
           </p>
         </div>
-
+        
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
-            <div className="rounded-md bg-error bg-opacity-10 p-4">
-              <div className="text-sm text-error font-medium">
-                {error}
-              </div>
+            <div className="rounded-md bg-error bg-opacity-10 border border-error p-4">
+              <div className="text-sm text-error">{error}</div>
             </div>
           )}
 
           <div className="space-y-4">
             <div>
-              <label htmlFor="full_name" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              <label htmlFor="full_name" className="sr-only">
                 Full Name
               </label>
               <input
                 id="full_name"
                 name="full_name"
                 type="text"
-                autoComplete="name"
                 required
                 value={formData.full_name}
-                onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-                placeholder="Enter your full name"
+                onChange={handleChange}
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-border-light dark:border-border-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark bg-card-light dark:bg-card-dark text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-accent focus:border-accent focus:z-10 sm:text-sm"
+                placeholder="Full Name"
               />
             </div>
-
+            
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              <label htmlFor="email" className="sr-only">
                 Email address
               </label>
               <input
@@ -98,14 +106,14 @@ export default function SignupForm() {
                 autoComplete="email"
                 required
                 value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-                placeholder="Enter your email"
+                onChange={handleChange}
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-border-light dark:border-border-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark bg-card-light dark:bg-card-dark text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-accent focus:border-accent focus:z-10 sm:text-sm"
+                placeholder="Email address"
               />
             </div>
-
+            
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              <label htmlFor="password" className="sr-only">
                 Password
               </label>
               <input
@@ -115,17 +123,14 @@ export default function SignupForm() {
                 autoComplete="new-password"
                 required
                 value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-                placeholder="Create a password"
+                onChange={handleChange}
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-border-light dark:border-border-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark bg-card-light dark:bg-card-dark text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-accent focus:border-accent focus:z-10 sm:text-sm"
+                placeholder="Password"
               />
-              <p className="mt-1 text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                Must be at least 8 characters with uppercase, lowercase, and number
-              </p>
             </div>
-
+            
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              <label htmlFor="confirmPassword" className="sr-only">
                 Confirm Password
               </label>
               <input
@@ -135,9 +140,9 @@ export default function SignupForm() {
                 autoComplete="new-password"
                 required
                 value={formData.confirmPassword}
-                onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-                placeholder="Confirm your password"
+                onChange={handleChange}
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-border-light dark:border-border-dark placeholder-text-secondary-light dark:placeholder-text-secondary-dark bg-card-light dark:bg-card-dark text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-accent focus:border-accent focus:z-10 sm:text-sm"
+                placeholder="Confirm Password"
               />
             </div>
           </div>
@@ -146,19 +151,10 @@ export default function SignupForm() {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-light dark:bg-primary-dark hover:bg-primary-dark dark:hover:bg-primary-light focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-light dark:focus:ring-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-accent hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating account...' : 'Create account'}
+              {loading ? 'Creating account...' : 'Sign up'}
             </button>
-          </div>
-
-          <div className="text-center">
-            <Link 
-              href="/" 
-              className="text-sm text-text-secondary-light dark:text-text-secondary-dark hover:text-text-primary-light dark:hover:text-text-primary-dark"
-            >
-              ← Back to home
-            </Link>
           </div>
         </form>
       </div>

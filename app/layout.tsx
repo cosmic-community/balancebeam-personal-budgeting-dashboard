@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import AuthProvider from '@/components/AuthProvider'
+import { ThemeProvider } from '@/components/ThemeProvider'
 import './globals.css'
-import { AuthProvider } from '@/components/AuthProvider'
-import ThemeProvider from '@/components/ThemeProvider'
-import CosmicBadge from '@/components/CosmicBadge'
-import { getCosmicBucketSlug } from '@/lib/utils'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'BalanceBeam - Personal Budgeting Dashboard',
-  description: 'Track your income, expenses, and financial goals with ease. A powerful personal budgeting dashboard built with Next.js and Cosmic CMS.',
+  description: 'Track your income, expenses, and budget with ease using BalanceBeam',
 }
 
 export default function RootLayout({
@@ -15,17 +16,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const bucketSlug = getCosmicBucketSlug()
-
   return (
     <html lang="en">
-      <body className="font-inter antialiased">
+      <body className={inter.className}>
         <ThemeProvider>
           <AuthProvider>
             {children}
           </AuthProvider>
         </ThemeProvider>
-        <CosmicBadge bucketSlug={bucketSlug} />
       </body>
     </html>
   )
