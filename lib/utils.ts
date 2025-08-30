@@ -1,27 +1,11 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwindcss-merge'
-import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount)
-}
-
-export function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-// CRITICAL FIX: Add proper null checks for environment variables
+// Environment variable getters with proper typing
 export function getCosmicBucketSlug(): string {
   const slug = process.env.COSMIC_BUCKET_SLUG
   if (!slug) {
@@ -31,95 +15,77 @@ export function getCosmicBucketSlug(): string {
 }
 
 export function getCosmicReadKey(): string {
-  const readKey = process.env.COSMIC_READ_KEY
-  if (!readKey) {
+  const key = process.env.COSMIC_READ_KEY
+  if (!key) {
     throw new Error('COSMIC_READ_KEY environment variable is required')
   }
-  return readKey
+  return key
 }
 
 export function getCosmicWriteKey(): string {
-  const writeKey = process.env.COSMIC_WRITE_KEY
-  if (!writeKey) {
+  const key = process.env.COSMIC_WRITE_KEY
+  if (!key) {
     throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
-  return writeKey
+  return key
 }
 
+// Currency formatting
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(amount)
+}
+
+// Date formatting utilities
+export function formatDate(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+export function formatDateForInput(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toISOString().split('T')[0]
+}
+
+// Slug generation
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single
     .trim()
 }
 
-export function formatDateForInput(date: Date | string): string {
-  const d = new Date(date)
-  return d.toISOString().split('T')[0]
+// Email validation function
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
 }
 
-export function calculateCategoryBreakdown(expenses: Transaction[]): CategoryBreakdownItem[] {
-  const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
-  
-  expenses.forEach(transaction => {
-    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
-      const categoryId = transaction.metadata.category.id
-      const categoryName = transaction.metadata.category.metadata.name || 'Unknown'
-      const categoryColor = transaction.metadata.category.metadata.color || '#999999'
-      const amount = Math.abs(transaction.metadata.amount || 0)
-      
-      if (!categoryTotals[categoryId]) {
-        categoryTotals[categoryId] = {
-          amount: 0,
-          color: categoryColor,
-          name: categoryName
-        }
-      }
-      
-      categoryTotals[categoryId].amount += amount
-    }
-  })
-  
-  const total = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
-  
-  return Object.values(categoryTotals).map(category => ({
-    name: category.name,
-    amount: category.amount,
-    color: category.color,
-    percentage: total > 0 ? (category.amount / total) * 100 : 0
-  }))
+// Password validation
+export function isValidPassword(password: string): boolean {
+  // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/
+  return passwordRegex.test(password)
 }
 
-export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
-  
-  transactions.forEach(transaction => {
-    const date = new Date(transaction.metadata.date || transaction.created_at)
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    
-    if (!monthlyTotals[monthKey]) {
-      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
-    }
-    
-    if (transaction.metadata.type?.key === 'income') {
-      monthlyTotals[monthKey].income += amount
-    } else {
-      monthlyTotals[monthKey].expenses += amount
-    }
-  })
-  
-  return Object.entries(monthlyTotals)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([monthKey, data]) => ({
-      month: new Date(monthKey + '-01').toLocaleDateString('en-US', { 
-        month: 'short', 
-        year: 'numeric' 
-      }),
-      income: data.income,
-      expenses: data.expenses,
-      net: data.income - data.expenses
-    }))
+// Safe number parsing
+export function safeParseFloat(value: string | number): number {
+  if (typeof value === 'number') return value
+  const parsed = parseFloat(value)
+  return isNaN(parsed) ? 0 : parsed
+}
+
+// Safe string conversion with fallback
+export function safeString(value: unknown, fallback: string = ''): string {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return fallback
+  return String(value)
 }

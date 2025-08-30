@@ -2,45 +2,33 @@
 
 import { useState } from 'react'
 import { isValidEmail } from '@/lib/utils'
-import { User } from '@/types'
+import { AuthUser } from '@/types'
 
 interface SettingsFormProps {
-  user: User
-  onUpdate?: () => void
+  user: AuthUser
+  onUpdate?: (user: AuthUser) => void
 }
 
 export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    full_name: user.metadata.full_name,
-    email: user.metadata.email,
-    dark_mode: user.metadata.dark_mode || false,
+    full_name: user.full_name,
+    email: user.email,
+    dark_mode: user.dark_mode
+  })
+  const [passwordData, setPasswordData] = useState({
     current_password: '',
     new_password: '',
     confirm_password: ''
   })
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
-      // Validate email
       if (!isValidEmail(formData.email)) {
         throw new Error('Please enter a valid email address')
-      }
-
-      // Validate password change if provided
-      if (formData.new_password) {
-        if (!formData.current_password) {
-          throw new Error('Current password is required to set new password')
-        }
-        if (formData.new_password !== formData.confirm_password) {
-          throw new Error('New passwords do not match')
-        }
-        if (formData.new_password.length < 6) {
-          throw new Error('New password must be at least 6 characters long')
-        }
       }
 
       const token = localStorage.getItem('auth-token')
@@ -50,56 +38,82 @@ export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          full_name: formData.full_name,
-          email: formData.email,
-          dark_mode: formData.dark_mode,
-          ...(formData.new_password && {
-            current_password: formData.current_password,
-            new_password: formData.new_password
-          })
-        })
+        body: JSON.stringify(formData)
       })
 
       if (response.ok) {
-        // Clear password fields
-        setFormData(prev => ({
-          ...prev,
+        const data = await response.json()
+        onUpdate?.(data.user)
+        alert('Profile updated successfully!')
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update profile')
+      }
+    } catch (error) {
+      console.error('Profile update error:', error)
+      alert(error instanceof Error ? error.message : 'Failed to update profile. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      alert('New passwords do not match')
+      return
+    }
+
+    if (passwordData.new_password.length < 6) {
+      alert('New password must be at least 6 characters long')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const token = localStorage.getItem('auth-token')
+      const response = await fetch('/api/user', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(passwordData)
+      })
+
+      if (response.ok) {
+        setPasswordData({
           current_password: '',
           new_password: '',
           confirm_password: ''
-        }))
-        
-        onUpdate?.()
-        alert('Settings updated successfully!')
+        })
+        alert('Password updated successfully!')
       } else {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update settings')
+        throw new Error(errorData.error || 'Failed to update password')
       }
     } catch (error) {
-      console.error('Settings update error:', error)
-      alert((error as Error).message)
+      console.error('Password update error:', error)
+      alert(error instanceof Error ? error.message : 'Failed to update password. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <div>
-          <h3 className="card-title">Account Settings</h3>
-          <p className="card-subtitle">Update your personal information and preferences</p>
+    <div className="space-y-6">
+      {/* Profile Settings */}
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <h3 className="card-title">Profile Settings</h3>
+            <p className="card-subtitle">Update your personal information</p>
+          </div>
         </div>
-      </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Personal Information */}
-        <div className="space-y-4">
-          <h4 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
-            Personal Information
-          </h4>
-          
+        
+        <form onSubmit={handleProfileUpdate} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
               Full Name
@@ -125,53 +139,50 @@ export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
               required
             />
           </div>
-        </div>
 
-        {/* Preferences */}
-        <div className="space-y-4">
-          <h4 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
-            Preferences
-          </h4>
-          
-          <div className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg">
-            <div>
-              <h5 className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                Dark Mode
-              </h5>
-              <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                Use dark theme for better viewing in low light
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.dark_mode}
-                onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 dark:peer-focus:ring-primary/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+          <div className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              id="dark_mode"
+              checked={formData.dark_mode}
+              onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
+              className="w-4 h-4 text-primary bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark rounded focus:ring-primary"
+            />
+            <label htmlFor="dark_mode" className="text-sm text-text-primary-light dark:text-text-primary-dark">
+              Enable dark mode
             </label>
           </div>
-        </div>
 
-        {/* Security */}
-        <div className="space-y-4">
-          <h4 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
-            Change Password
-          </h4>
-          <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-            Leave blank to keep current password
-          </p>
-          
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full btn-primary"
+          >
+            {loading ? 'Updating...' : 'Update Profile'}
+          </button>
+        </form>
+      </div>
+
+      {/* Password Change */}
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <h3 className="card-title">Change Password</h3>
+            <p className="card-subtitle">Update your account password</p>
+          </div>
+        </div>
+        
+        <form onSubmit={handlePasswordChange} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
               Current Password
             </label>
             <input
               type="password"
-              value={formData.current_password}
-              onChange={(e) => setFormData(prev => ({ ...prev, current_password: e.target.value }))}
+              value={passwordData.current_password}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, current_password: e.target.value }))}
               className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              required
             />
           </div>
 
@@ -181,9 +192,10 @@ export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
             </label>
             <input
               type="password"
-              value={formData.new_password}
-              onChange={(e) => setFormData(prev => ({ ...prev, new_password: e.target.value }))}
+              value={passwordData.new_password}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, new_password: e.target.value }))}
               className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              required
               minLength={6}
             />
           </div>
@@ -194,24 +206,23 @@ export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
             </label>
             <input
               type="password"
-              value={formData.confirm_password}
-              onChange={(e) => setFormData(prev => ({ ...prev, confirm_password: e.target.value }))}
+              value={passwordData.confirm_password}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, confirm_password: e.target.value }))}
               className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              required
               minLength={6}
             />
           </div>
-        </div>
 
-        <div className="pt-4">
           <button
             type="submit"
             disabled={loading}
             className="w-full btn-primary"
           >
-            {loading ? 'Updating...' : 'Update Settings'}
+            {loading ? 'Updating...' : 'Change Password'}
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   )
 }
