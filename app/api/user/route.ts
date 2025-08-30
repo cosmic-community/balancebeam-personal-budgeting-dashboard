@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cosmic } from '@/lib/cosmic'
-import { verifyJWT, extractTokenFromHeader, hashPassword } from '@/lib/auth'
+import { cosmic, hasStatus } from '@/lib/cosmic'
+import { verifyJWT, extractTokenFromHeader, comparePasswords, hashPassword } from '@/lib/auth'
+import { User } from '@/types'
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,25 +26,33 @@ export async function GET(request: NextRequest) {
 
     // Get user data
     const userResponse = await cosmic.objects.findOne({
+      type: 'users',
       id: payload.userId
-    }).props(['id', 'title', 'metadata'])
+    })
 
-    const user = userResponse.object
+    const user = userResponse.object as User
 
-    // Return user data (excluding password hash)
-    const userResponseClean = {
-      id: user.id,
-      email: user.metadata.email,
-      full_name: user.metadata.full_name,
-      dark_mode: user.metadata.dark_mode || false
-    }
-
-    return NextResponse.json({ user: userResponseClean })
-
+    // Return user data without password hash
+    const { password_hash, ...userWithoutPassword } = user.metadata
+    
+    return NextResponse.json({
+      user: {
+        ...user,
+        metadata: userWithoutPassword
+      }
+    })
   } catch (error) {
     console.error('User fetch error:', error)
+    
+    if (hasStatus(error) && error.status === 404) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
     return NextResponse.json(
-      { error: 'Failed to fetch user data' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -71,31 +80,52 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { full_name, dark_mode, current_password, new_password } = body
+    const { full_name, email, current_password, new_password, dark_mode } = body
+
+    // Get current user data
+    const userResponse = await cosmic.objects.findOne({
+      type: 'users',
+      id: payload.userId
+    })
+
+    const user = userResponse.object as User
 
     // Build update object
     const updateData: any = {}
 
-    if (full_name !== undefined) {
+    if (full_name) {
       updateData.title = full_name
       updateData['metadata.full_name'] = full_name
     }
 
-    if (dark_mode !== undefined) {
+    if (email && email !== user.metadata.email) {
+      // Check if email is already taken
+      try {
+        await cosmic.objects.findOne({
+          type: 'users',
+          'metadata.email': email
+        })
+        return NextResponse.json(
+          { error: 'Email already exists' },
+          { status: 400 }
+        )
+      } catch (error) {
+        if (hasStatus(error) && error.status === 404) {
+          // Email not taken, safe to update
+          updateData['metadata.email'] = email
+        } else {
+          throw error
+        }
+      }
+    }
+
+    if (typeof dark_mode === 'boolean') {
       updateData['metadata.dark_mode'] = dark_mode
     }
 
     // Handle password change
-    if (new_password && current_password) {
-      // Get current user to verify password
-      const userResponse = await cosmic.objects.findOne({
-        id: payload.userId
-      }).props(['metadata'])
-
-      const user = userResponse.object
-
+    if (current_password && new_password) {
       // Verify current password
-      const { comparePasswords } = await import('@/lib/auth')
       const isCurrentPasswordValid = await comparePasswords(current_password, user.metadata.password_hash)
       
       if (!isCurrentPasswordValid) {
@@ -106,27 +136,27 @@ export async function PUT(request: NextRequest) {
       }
 
       // Hash new password
-      const newPasswordHash = await hashPassword(new_password)
-      updateData['metadata.password_hash'] = newPasswordHash
+      const hashedNewPassword = await hashPassword(new_password)
+      updateData['metadata.password_hash'] = hashedNewPassword
     }
 
     // Update user
-    const updatedUser = await cosmic.objects.updateOne(payload.userId, updateData)
+    const updatedUserResponse = await cosmic.objects.updateOne(payload.userId, updateData)
+    const updatedUser = updatedUserResponse.object as User
 
-    // Return updated user data (excluding password hash)
-    const userResponseClean = {
-      id: updatedUser.object.id,
-      email: updatedUser.object.metadata.email,
-      full_name: updatedUser.object.metadata.full_name,
-      dark_mode: updatedUser.object.metadata.dark_mode || false
-    }
+    // Return updated user data without password hash
+    const { password_hash, ...userWithoutPassword } = updatedUser.metadata
 
-    return NextResponse.json({ user: userResponseClean })
-
+    return NextResponse.json({
+      user: {
+        ...updatedUser,
+        metadata: userWithoutPassword
+      }
+    })
   } catch (error) {
     console.error('User update error:', error)
     return NextResponse.json(
-      { error: 'Failed to update user data' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
