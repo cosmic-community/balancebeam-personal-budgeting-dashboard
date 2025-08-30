@@ -1,21 +1,34 @@
 import { SignJWT, jwtVerify } from 'jose'
+import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'fallback-secret-key-for-development-only'
-)
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required')
+}
 
-export async function signJWT(payload: JWTPayload): Promise<string> {
-  return await new SignJWT(payload)
+const secret = new TextEncoder().encode(JWT_SECRET)
+
+export async function hashPassword(password: string): Promise<string> {
+  const salt = await bcrypt.genSalt(12)
+  return bcrypt.hash(password, salt)
+}
+
+export async function comparePasswords(password: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword)
+}
+
+export async function signJWT(payload: { userId: string; email: string }): Promise<string> {
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
-    .sign(JWT_SECRET)
+    .setExpirationTime('7d')
+    .sign(secret)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
     console.error('JWT verification failed:', error)
@@ -24,39 +37,35 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
-  if (!authHeader) {
-    return null
-  }
-
+  if (!authHeader) return null
+  
   // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
-
-  // Handle cookie format
-  if (authHeader.includes('auth-token=')) {
-    const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
-    return tokenMatch ? tokenMatch[1] : null
-  }
-
-  // Convert undefined to null to satisfy TypeScript
-  const token = authHeader || null
   
-  // Return the header as-is if it doesn't match expected formats, but ensure it's not undefined
-  return token
+  // Handle cookie format (auth-token=...)
+  if (authHeader.includes('auth-token=')) {
+    const match = authHeader.match(/auth-token=([^;]+)/)
+    return match ? match[1] : null
+  }
+  
+  return authHeader
 }
 
-export async function hashPassword(password: string): Promise<string> {
-  // This is a simplified hash - in production, use bcrypt or similar
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const hashedPassword = await hashPassword(password)
-  return hashedPassword === hash
+export async function getUserFromJWT(token: string): Promise<{ userId: string; email: string } | null> {
+  const payload = await verifyJWT(token)
+  if (!payload || !payload.userId || !payload.email) {
+    return null
+  }
+  
+  // Fix TypeScript error: handle potentially undefined userId by validating it exists
+  const userId = payload.userId
+  const email = payload.email
+  
+  if (typeof userId !== 'string' || typeof email !== 'string') {
+    return null
+  }
+  
+  return { userId, email }
 }
