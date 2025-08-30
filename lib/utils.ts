@@ -1,112 +1,105 @@
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
-// Currency formatting
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD'
+    currency: 'USD',
   }).format(amount)
 }
 
-// Date formatting
 export function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  }).format(date)
+  try {
+    return new Intl.DateFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(dateString))
+  } catch (error) {
+    return 'Invalid Date'
+  }
 }
 
-// Generate URL-friendly slug
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9 -]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+    .replace(/[^\w ]+/g, '')
+    .replace(/ +/g, '-')
     .trim()
 }
 
-// Email validation
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
+export function calculateCategoryBreakdown(expenseTransactions: Transaction[]): CategoryBreakdownItem[] {
+  if (!expenseTransactions || expenseTransactions.length === 0) {
+    return []
+  }
 
-// Password validation
-export function validatePassword(password: string): boolean {
-  // Password must be at least 8 characters long
-  return password.length >= 8
-}
-
-// Calculate category breakdown for expenses
-export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
-  const categoryTotals: { [key: string]: { amount: number; name: string; color: string } } = {}
+  const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
   let totalExpenses = 0
 
-  transactions.forEach(transaction => {
-    if (transaction.metadata.type?.key === 'expense' && transaction.metadata.category) {
-      const categoryName = transaction.metadata.category.metadata?.name || transaction.metadata.category.title
-      const categoryColor = transaction.metadata.category.metadata?.color || '#9CA3AF'
-      const amount = Math.abs(transaction.metadata.amount)
-      
-      totalExpenses += amount
+  expenseTransactions.forEach(transaction => {
+    const amount = Math.abs(transaction.metadata.amount || 0)
+    totalExpenses += amount
 
-      if (categoryTotals[categoryName]) {
-        categoryTotals[categoryName].amount += amount
-      } else {
-        categoryTotals[categoryName] = {
-          amount,
-          name: categoryName,
-          color: categoryColor
-        }
+    // Safe category access
+    let categoryName = 'Unknown Category'
+    let categoryColor = '#999999'
+
+    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
+      categoryName = transaction.metadata.category.metadata.name || 'Unknown Category'
+      categoryColor = transaction.metadata.category.metadata.color || '#999999'
+    }
+
+    if (!categoryTotals[categoryName]) {
+      categoryTotals[categoryName] = {
+        amount: 0,
+        color: categoryColor,
+        name: categoryName
       }
     }
+
+    categoryTotals[categoryName].amount += amount
   })
 
   return Object.values(categoryTotals).map(category => ({
     ...category,
     percentage: totalExpenses > 0 ? Math.round((category.amount / totalExpenses) * 100) : 0
-  })).sort((a, b) => b.amount - a.amount)
+  }))
 }
 
-// Calculate monthly data for cash flow chart
 export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  const monthlyData: { [key: string]: { income: number; expenses: number } } = {}
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
+
+  const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
 
   transactions.forEach(transaction => {
+    const amount = Math.abs(transaction.metadata.amount || 0)
     const date = new Date(transaction.metadata.date)
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-    
-    if (!monthlyData[monthKey]) {
-      monthlyData[monthKey] = { income: 0, expenses: 0 }
+    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
+
+    if (!monthlyTotals[monthKey]) {
+      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
     }
 
     if (transaction.metadata.type?.key === 'income') {
-      monthlyData[monthKey].income += transaction.metadata.amount
-    } else if (transaction.metadata.type?.key === 'expense') {
-      monthlyData[monthKey].expenses += Math.abs(transaction.metadata.amount)
+      monthlyTotals[monthKey].income += amount
+    } else {
+      monthlyTotals[monthKey].expenses += amount
     }
   })
 
-  return Object.entries(monthlyData)
+  return Object.entries(monthlyTotals)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([monthKey, data]) => {
-      const date = new Date(monthKey + '-01')
-      const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-      
-      return {
-        month: monthName,
-        income: data.income,
-        expenses: data.expenses,
-        net: data.income - data.expenses
-      }
-    })
-}
-
-// Class name utility (similar to clsx)
-export function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ')
+    .map(([month, totals]) => ({
+      month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      income: totals.income,
+      expenses: totals.expenses,
+      net: totals.income - totals.expenses
+    }))
 }

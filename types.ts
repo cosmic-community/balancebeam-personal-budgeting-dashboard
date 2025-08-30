@@ -22,27 +22,27 @@ export interface User extends CosmicObject {
   };
 }
 
-// Transaction object type
+// Transaction object type with safer property access
 export interface Transaction extends CosmicObject {
   type: 'transactions';
   metadata: {
-    user: User;
+    user: User | string; // Can be populated object or just ID
     type: {
       key: 'income' | 'expense';
       value: 'Income' | 'Expense';
     };
     amount: number;
-    category: Category;
-    description?: string;
+    category: Category | string; // Can be populated object or just ID
+    description?: string; // Optional since it can be undefined
     date: string;
   };
 }
 
-// Category object type
+// Category object type with safer property access
 export interface Category extends CosmicObject {
   type: 'categories';
   metadata: {
-    user: User;
+    user: User | string; // Can be populated object or just ID
     name: string;
     color: string;
     type: {
@@ -132,11 +132,38 @@ export interface CategoryFormData {
   type: CategoryType;
 }
 
-// Component props interfaces
+// Component props interfaces with safer typing
 export interface TransactionsListProps {
   transactions: Transaction[];
   categories: Category[];
-  userId: string; // Added missing userId property
+  userId: string;
+}
+
+// Helper functions for safe property access
+export function getTransactionCategoryName(transaction: Transaction): string {
+  if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata?.name) {
+    return transaction.metadata.category.metadata.name;
+  }
+  return 'Unknown Category';
+}
+
+export function getTransactionUserName(transaction: Transaction): string {
+  if (typeof transaction.metadata.user === 'object' && transaction.metadata.user?.metadata?.full_name) {
+    return transaction.metadata.user.metadata.full_name;
+  }
+  return 'Unknown User';
+}
+
+export function getTransactionDescription(transaction: Transaction): string {
+  return transaction.metadata.description || 'No description';
+}
+
+export function getCategoryColor(category: Category): string {
+  return category.metadata.color || '#999999';
+}
+
+export function getCategoryName(category: Category): string {
+  return category.metadata.name || 'Unknown Category';
 }
 
 // Type guards for runtime validation
@@ -150,6 +177,15 @@ export function isTransaction(obj: CosmicObject): obj is Transaction {
 
 export function isCategory(obj: CosmicObject): obj is Category {
   return obj.type === 'categories';
+}
+
+// Safe type checking functions
+export function isPopulatedUser(user: User | string): user is User {
+  return typeof user === 'object' && user !== null && 'metadata' in user;
+}
+
+export function isPopulatedCategory(category: Category | string): category is Category {
+  return typeof category === 'object' && category !== null && 'metadata' in category;
 }
 
 // Utility types
