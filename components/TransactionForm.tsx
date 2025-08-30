@@ -17,7 +17,7 @@ export default function TransactionForm({ categories: initialCategories, onSucce
     amount: 0,
     category: '',
     description: '',
-    date: formatDateForInput(new Date())
+    date: formatDateForInput(new Date().toISOString())
   })
 
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function TransactionForm({ categories: initialCategories, onSucce
           amount: 0,
           category: categories[0]?.id || '',
           description: '',
-          date: formatDateForInput(new Date())
+          date: formatDateForInput(new Date().toISOString())
         })
         
         if (onSuccess) onSuccess()
