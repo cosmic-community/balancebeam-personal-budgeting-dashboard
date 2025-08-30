@@ -1,4 +1,39 @@
-// Environment variable getters with proper fallbacks
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(amount)
+}
+
+export function formatDate(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return new Intl.DateFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(dateObj)
+}
+
+export function formatDateForInput(date: Date): string {
+  return date.toISOString().split('T')[0]
+}
+
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+// Environment variable getters with proper type safety
 export function getCosmicBucketSlug(): string {
   const slug = process.env.COSMIC_BUCKET_SLUG
   if (!slug) {
@@ -23,169 +58,93 @@ export function getCosmicWriteKey(): string {
   return key
 }
 
-// Slug generation utility
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/[\s_-]+/g, '-') // Replace spaces and underscores with hyphens
-    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
-}
-
-// Currency formatting
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount)
-}
-
-// Date formatting utilities
-export function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-export function formatDateForInput(date: Date): string {
-  return date.toISOString().split('T')[0]
-}
-
-// Email validation
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-// Password validation
-export function validatePassword(password: string): string | null {
-  if (password.length < 8) {
-    return 'Password must be at least 8 characters long'
+// JWT secret getter with proper type safety
+export function getJWTSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required')
   }
-  if (!/(?=.*[a-z])/.test(password)) {
-    return 'Password must contain at least one lowercase letter'
-  }
-  if (!/(?=.*[A-Z])/.test(password)) {
-    return 'Password must contain at least one uppercase letter'
-  }
-  if (!/(?=.*\d)/.test(password)) {
-    return 'Password must contain at least one number'
-  }
-  return null
+  return secret
 }
 
-// Calculate percentage
-export function calculatePercentage(part: number, total: number): number {
-  if (total === 0) return 0
-  return Math.round((part / total) * 100 * 100) / 100 // Round to 2 decimal places
-}
-
-// Safe number parsing
-export function safeParseFloat(value: string | number): number {
-  if (typeof value === 'number') return value
-  const parsed = parseFloat(value)
-  return isNaN(parsed) ? 0 : parsed
-}
-
-// Class name utility for conditional styling
-export function cn(...classes: (string | undefined | null | boolean)[]): string {
-  return classes
-    .filter(Boolean)
-    .join(' ')
-}
-
-// Debounce utility for search/input
-export function debounce<T extends (...args: any[]) => void>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout)
-    timeout = setTimeout(() => func(...args), wait)
-  }
-}
-
-// Local storage helpers with error handling
-export function getFromLocalStorage(key: string): string | null {
-  if (typeof window === 'undefined') return null
-  
-  try {
-    return localStorage.getItem(key)
-  } catch (error) {
-    console.error('Error reading from localStorage:', error)
-    return null
-  }
-}
-
-export function setToLocalStorage(key: string, value: string): boolean {
-  if (typeof window === 'undefined') return false
-  
-  try {
-    localStorage.setItem(key, value)
-    return true
-  } catch (error) {
-    console.error('Error writing to localStorage:', error)
-    return false
-  }
-}
-
-export function removeFromLocalStorage(key: string): boolean {
-  if (typeof window === 'undefined') return false
-  
-  try {
-    localStorage.removeItem(key)
-    return true
-  } catch (error) {
-    console.error('Error removing from localStorage:', error)
-    return false
-  }
-}
-
-// Type-safe object key checking
-export function hasOwnProperty<T extends object>(
-  obj: T,
-  key: string | number | symbol
-): key is keyof T {
-  return Object.prototype.hasOwnProperty.call(obj, key)
-}
-
-// Format relative time (e.g., "2 days ago")
-export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
-
-  if (diffInSeconds < 60) {
-    return 'Just now'
+// Calculate category breakdown for expenses
+export function calculateCategoryBreakdown(expenseTransactions: Transaction[]): CategoryBreakdownItem[] {
+  if (!expenseTransactions || expenseTransactions.length === 0) {
+    return []
   }
 
-  const diffInMinutes = Math.floor(diffInSeconds / 60)
-  if (diffInMinutes < 60) {
-    return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`
+  // Group expenses by category
+  const categoryTotals = expenseTransactions.reduce((acc, transaction) => {
+    if (!transaction.metadata.category || typeof transaction.metadata.category !== 'object') {
+      return acc
+    }
+
+    const category = transaction.metadata.category
+    const categoryName = category.metadata?.name || 'Unknown Category'
+    const categoryColor = category.metadata?.color || '#999999'
+    const amount = Math.abs(transaction.metadata.amount || 0)
+
+    if (!acc[categoryName]) {
+      acc[categoryName] = {
+        name: categoryName,
+        amount: 0,
+        color: categoryColor,
+        percentage: 0
+      }
+    }
+
+    acc[categoryName].amount += amount
+    return acc
+  }, {} as Record<string, CategoryBreakdownItem>)
+
+  // Calculate total expenses for percentage calculation
+  const totalExpenses = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
+
+  // Calculate percentages and return sorted array
+  return Object.values(categoryTotals)
+    .map(item => ({
+      ...item,
+      percentage: totalExpenses > 0 ? Math.round((item.amount / totalExpenses) * 100) : 0
+    }))
+    .sort((a, b) => b.amount - a.amount)
+}
+
+// Calculate monthly data for charts
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
+  if (!transactions || transactions.length === 0) {
+    return []
   }
 
-  const diffInHours = Math.floor(diffInMinutes / 60)
-  if (diffInHours < 24) {
-    return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`
-  }
+  // Group transactions by month
+  const monthlyTotals = transactions.reduce((acc, transaction) => {
+    const date = new Date(transaction.metadata.date)
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+    
+    if (!acc[monthKey]) {
+      acc[monthKey] = {
+        month: monthName,
+        income: 0,
+        expenses: 0,
+        net: 0
+      }
+    }
 
-  const diffInDays = Math.floor(diffInHours / 24)
-  if (diffInDays < 30) {
-    return `${diffInDays} day${diffInDays !== 1 ? 's' : ''} ago`
-  }
+    const amount = transaction.metadata.amount || 0
+    if (transaction.metadata.type?.key === 'income') {
+      acc[monthKey].income += Math.abs(amount)
+    } else if (transaction.metadata.type?.key === 'expense') {
+      acc[monthKey].expenses += Math.abs(amount)
+    }
 
-  const diffInMonths = Math.floor(diffInDays / 30)
-  if (diffInMonths < 12) {
-    return `${diffInMonths} month${diffInMonths !== 1 ? 's' : ''} ago`
-  }
+    return acc
+  }, {} as Record<string, MonthlyDataItem>)
 
-  const diffInYears = Math.floor(diffInMonths / 12)
-  return `${diffInYears} year${diffInYears !== 1 ? 's' : ''} ago`
+  // Calculate net for each month and return sorted array
+  return Object.values(monthlyTotals)
+    .map(item => ({
+      ...item,
+      net: item.income - item.expenses
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month))
 }
