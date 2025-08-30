@@ -2,85 +2,50 @@
 
 import { useState } from 'react'
 import { isValidEmail } from '@/lib/utils'
-import { AuthUser } from '@/types'
+import { User } from '@/types'
 
 interface SettingsFormProps {
-  user: AuthUser
-  onUserUpdate: (user: AuthUser) => void
+  user: User
 }
 
-export default function SettingsForm({ user, onUserUpdate }: SettingsFormProps) {
+export default function SettingsForm({ user }: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    full_name: user.full_name || '',
-    email: user.email || '',
-    dark_mode: user.dark_mode || false
-  })
-  
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
+    full_name: user.metadata.full_name,
+    email: user.metadata.email,
+    dark_mode: user.metadata.dark_mode || false,
+    current_password: '',
+    new_password: '',
+    confirm_password: ''
   })
 
-  const handleProfileUpdate = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!formData.full_name.trim()) {
-      alert('Full name is required')
-      return
-    }
-    
-    if (!isValidEmail(formData.email)) {
-      alert('Please enter a valid email address')
-      return
-    }
-
     setLoading(true)
 
     try {
-      const token = localStorage.getItem('auth-token')
-      const response = await fetch('/api/user', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        onUserUpdate(data.user)
-        alert('Profile updated successfully!')
-      } else {
-        const errorData = await response.json()
-        alert(errorData.error || 'Failed to update profile')
+      // Validate email
+      if (!isValidEmail(formData.email)) {
+        alert('Please enter a valid email address')
+        return
       }
-    } catch (error) {
-      console.error('Profile update error:', error)
-      alert('Failed to update profile. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert('New passwords do not match')
-      return
-    }
-    
-    if (passwordData.newPassword.length < 6) {
-      alert('New password must be at least 6 characters long')
-      return
-    }
+      // Validate password if changing
+      if (formData.new_password) {
+        if (!formData.current_password) {
+          alert('Current password is required to change password')
+          return
+        }
+        if (formData.new_password !== formData.confirm_password) {
+          alert('New passwords do not match')
+          return
+        }
+        if (formData.new_password.length < 6) {
+          alert('New password must be at least 6 characters')
+          return
+        }
+      }
 
-    setLoading(true)
-
-    try {
       const token = localStorage.getItem('auth-token')
       const response = await fetch('/api/user', {
         method: 'PUT',
@@ -89,40 +54,56 @@ export default function SettingsForm({ user, onUserUpdate }: SettingsFormProps) 
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          currentPassword: passwordData.currentPassword,
-          newPassword: passwordData.newPassword
+          full_name: formData.full_name,
+          email: formData.email,
+          dark_mode: formData.dark_mode,
+          ...(formData.new_password && {
+            current_password: formData.current_password,
+            new_password: formData.new_password
+          })
         })
       })
 
       if (response.ok) {
-        setPasswordData({
-          currentPassword: '',
-          newPassword: '',
-          confirmPassword: ''
-        })
-        alert('Password updated successfully!')
+        alert('Settings updated successfully')
+        // Clear password fields
+        setFormData(prev => ({
+          ...prev,
+          current_password: '',
+          new_password: '',
+          confirm_password: ''
+        }))
+        
+        // Reload page to reflect changes
+        window.location.reload()
       } else {
         const errorData = await response.json()
-        alert(errorData.error || 'Failed to update password')
+        throw new Error(errorData.error || 'Failed to update settings')
       }
     } catch (error) {
-      console.error('Password update error:', error)
-      alert('Failed to update password. Please try again.')
+      console.error('Settings update error:', error)
+      alert(`Failed to update settings: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="space-y-6">
-      {/* Profile Settings */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">Profile Settings</h3>
-          <p className="card-subtitle">Update your account information</p>
+    <div className="card">
+      <div className="card-header">
+        <div>
+          <h3 className="card-title">Account Settings</h3>
+          <p className="card-subtitle">Update your account information and preferences</p>
         </div>
-        
-        <form onSubmit={handleProfileUpdate} className="space-y-4">
+      </div>
+      
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Profile Information */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Profile Information
+          </h4>
+          
           <div>
             <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
               Full Name
@@ -148,48 +129,48 @@ export default function SettingsForm({ user, onUserUpdate }: SettingsFormProps) 
               required
             />
           </div>
+        </div>
 
-          <div className="flex items-center space-x-2">
+        {/* Preferences */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Preferences
+          </h4>
+          
+          <div className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg">
+            <div>
+              <label className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                Dark Mode
+              </label>
+              <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                Enable dark mode for better viewing in low light
+              </p>
+            </div>
             <input
               type="checkbox"
-              id="darkMode"
               checked={formData.dark_mode}
               onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
-              className="w-4 h-4 text-primary bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark rounded"
+              className="w-4 h-4 text-primary bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark rounded focus:ring-primary"
             />
-            <label htmlFor="darkMode" className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-              Enable Dark Mode
-            </label>
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full btn-primary"
-          >
-            {loading ? 'Updating...' : 'Update Profile'}
-          </button>
-        </form>
-      </div>
-
-      {/* Password Change */}
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">Change Password</h3>
-          <p className="card-subtitle">Update your account password</p>
         </div>
-        
-        <form onSubmit={handlePasswordChange} className="space-y-4">
+
+        {/* Change Password */}
+        <div className="space-y-4">
+          <h4 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">
+            Change Password
+          </h4>
+          
           <div>
             <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
               Current Password
             </label>
             <input
               type="password"
-              value={passwordData.currentPassword}
-              onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+              value={formData.current_password}
+              onChange={(e) => setFormData(prev => ({ ...prev, current_password: e.target.value }))}
               className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-              required
+              placeholder="Enter current password to change"
             />
           </div>
 
@@ -199,11 +180,10 @@ export default function SettingsForm({ user, onUserUpdate }: SettingsFormProps) 
             </label>
             <input
               type="password"
-              value={passwordData.newPassword}
-              onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+              value={formData.new_password}
+              onChange={(e) => setFormData(prev => ({ ...prev, new_password: e.target.value }))}
               className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-              minLength={6}
-              required
+              placeholder="Enter new password (optional)"
             />
           </div>
 
@@ -213,23 +193,24 @@ export default function SettingsForm({ user, onUserUpdate }: SettingsFormProps) 
             </label>
             <input
               type="password"
-              value={passwordData.confirmPassword}
-              onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+              value={formData.confirm_password}
+              onChange={(e) => setFormData(prev => ({ ...prev, confirm_password: e.target.value }))}
               className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-              minLength={6}
-              required
+              placeholder="Confirm new password"
             />
           </div>
+        </div>
 
+        <div className="pt-4 border-t border-border-light dark:border-border-dark">
           <button
             type="submit"
             disabled={loading}
             className="w-full btn-primary"
           >
-            {loading ? 'Updating...' : 'Change Password'}
+            {loading ? 'Updating...' : 'Update Settings'}
           </button>
-        </form>
-      </div>
+        </div>
+      </form>
     </div>
   )
 }
