@@ -1,15 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-export async function POST(request: NextRequest) {
-  const response = NextResponse.json({ success: true })
-
-  // Clear the auth cookie
-  response.cookies.set('auth-token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    expires: new Date(0)
+export async function POST() {
+  // Since we're using JWT tokens stored on the client side,
+  // logout is handled by the client removing the token from localStorage.
+  // This endpoint exists for consistency but doesn't need to do much server-side.
+  
+  return NextResponse.json({ 
+    message: 'Logged out successfully' 
   })
-
-  return response
 }

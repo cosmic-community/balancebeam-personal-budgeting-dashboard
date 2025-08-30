@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { signJWT } from '@/lib/auth'
-import { RegisterRequest, User } from '@/types'
-import { generateSlug } from '@/lib/utils'
+import { signJWT, hashPassword } from '@/lib/auth'
+import { isValidEmail, isValidPassword, generateSlug } from '@/lib/utils'
+import { RegisterRequest } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,38 +24,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (password.length < 6) {
+    if (!isValidEmail(email)) {
       return NextResponse.json(
-        { error: 'Password must be at least 6 characters' },
+        { error: 'Please enter a valid email address' },
+        { status: 400 }
+      )
+    }
+
+    if (!isValidPassword(password)) {
+      return NextResponse.json(
+        { error: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number' },
         { status: 400 }
       )
     }
 
     // Check if user already exists
     try {
-      const existingUserResponse = await cosmic.objects
-        .find({ 
-          type: 'users',
-          'metadata.email': email.toLowerCase() 
-        })
-        .props(['id'])
+      const existingUserResponse = await cosmic.objects.find({
+        type: 'users',
+        'metadata.email': email
+      }).props(['id'])
 
       if (existingUserResponse.objects && existingUserResponse.objects.length > 0) {
         return NextResponse.json(
           { error: 'User with this email already exists' },
-          { status: 400 }
+          { status: 409 }
         )
       }
     } catch (error) {
-      if (hasStatus(error) && error.status === 404) {
-        // User doesn't exist, which is what we want
-      } else {
-        throw error
+      // If error is 404, no user exists, which is what we want
+      if (!hasStatus(error) || error.status !== 404) {
+        console.error('Error checking existing user:', error)
+        return NextResponse.json(
+          { error: 'Internal server error' },
+          { status: 500 }
+        )
       }
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12)
+    const password_hash = await hashPassword(password)
 
     // Create user
     const newUser = await cosmic.objects.insertOne({
@@ -66,41 +73,35 @@ export async function POST(request: NextRequest) {
       metadata: {
         full_name,
         email: email.toLowerCase(),
-        password_hash: hashedPassword,
+        password_hash,
         dark_mode: false,
-        created_at: new Date().toISOString().split('T')[0]
+        created_at: new Date().toISOString().split('T')[0] // YYYY-MM-DD format
       }
     })
 
-    const user = newUser.object as User
+    // Generate JWT token
+    const token = await signJWT({
+      userId: newUser.object.id,
+      email: email.toLowerCase()
+    })
 
-    // Create JWT token
-    const tokenPayload = {
-      userId: user.id,
-      email: user.metadata.email,
-      full_name: user.metadata.full_name,
-      dark_mode: user.metadata.dark_mode
-    }
-
-    const token = await signJWT(tokenPayload)
-
-    // Return user data without password hash
-    const userData = {
-      id: user.id,
-      email: user.metadata.email,
-      full_name: user.metadata.full_name,
-      dark_mode: user.metadata.dark_mode
+    // Return user data (excluding password hash)
+    const userResponse = {
+      id: newUser.object.id,
+      email: newUser.object.metadata.email,
+      full_name: newUser.object.metadata.full_name,
+      dark_mode: newUser.object.metadata.dark_mode || false
     }
 
     return NextResponse.json({
-      user: userData,
+      user: userResponse,
       token
     })
 
   } catch (error) {
     console.error('Registration error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Registration failed. Please try again.' },
       { status: 500 }
     )
   }
