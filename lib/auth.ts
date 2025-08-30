@@ -1,22 +1,12 @@
 import { SignJWT, jwtVerify } from 'jose'
-import { NextRequest } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
 
-const jwtSecret = process.env.JWT_SECRET
-if (!jwtSecret) {
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required')
 }
 
-const secret = new TextEncoder().encode(jwtSecret)
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
-}
-
-export async function comparePasswords(password: string, hashedPassword: string): Promise<boolean> {
-  return bcrypt.compare(password, hashedPassword)
-}
+const secret = new TextEncoder().encode(JWT_SECRET)
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
   return new SignJWT(payload)
@@ -37,34 +27,33 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
-  if (!authHeader) return null
-  
+  if (!authHeader) {
+    return null
+  }
+
   // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
-  
-  // Handle cookie format
+
+  // Handle cookie format (auth-token=...)
   if (authHeader.includes('auth-token=')) {
     const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
     return tokenMatch ? tokenMatch[1] : null
   }
-  
-  return null
+
+  // Handle direct token (fallback)
+  return authHeader
 }
 
-export async function getAuthenticatedUser(request: NextRequest): Promise<JWTPayload | null> {
-  const authHeader = request.headers.get('authorization')
-  const cookieHeader = request.headers.get('cookie')
-  
-  let token = extractTokenFromHeader(authHeader)
-  
-  // If no bearer token, try to extract from cookies
-  if (!token && cookieHeader) {
-    token = extractTokenFromHeader(cookieHeader)
-  }
-  
-  if (!token) return null
-  
-  return verifyJWT(token)
+// Cookie utilities
+export function setAuthCookie(token: string): string {
+  const maxAge = 7 * 24 * 60 * 60 // 7 days in seconds
+  return `auth-token=${token}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Lax; Secure=${process.env.NODE_ENV === 'production'}`
+}
+
+export function clearAuthCookie(): string {
+  // Fixed: Handle undefined environment variable properly
+  const nodeEnv = process.env.NODE_ENV || 'development'
+  return `auth-token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax; Secure=${nodeEnv === 'production'}`
 }
