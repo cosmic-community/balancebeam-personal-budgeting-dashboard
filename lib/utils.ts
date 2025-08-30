@@ -1,5 +1,5 @@
 import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwindcss-merge'
+import { twMerge } from 'tailwind-merge'
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
@@ -11,6 +11,15 @@ export function formatCurrency(amount: number): string {
     style: 'currency',
     currency: 'USD'
   }).format(amount)
+}
+
+export function formatDate(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
 }
 
 export function formatDateForInput(date: Date | string): string {
