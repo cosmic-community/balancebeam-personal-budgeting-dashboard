@@ -1,11 +1,51 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Environment variable helpers
+export function getCosmicBucketSlug(): string {
+  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
+  if (!bucketSlug) {
+    throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
+  }
+  return bucketSlug
+}
+
+export function getCosmicReadKey(): string {
+  const readKey = process.env.COSMIC_READ_KEY
+  if (!readKey) {
+    throw new Error('COSMIC_READ_KEY environment variable is required')
+  }
+  return readKey
+}
+
+export function getCosmicWriteKey(): string {
+  const writeKey = process.env.COSMIC_WRITE_KEY
+  if (!writeKey) {
+    throw new Error('COSMIC_WRITE_KEY environment variable is required')
+  }
+  return writeKey
+}
+
+// Date formatting utilities
+export function formatDate(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+export function formatDateForInput(date: Date | string): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toISOString().split('T')[0]
+}
+
+// Currency formatting
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -13,174 +53,199 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+// String utilities
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9 -]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim()
+    .replace(/[^\w ]+/g, '')
+    .replace(/ +/g, '-')
 }
 
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-export function calculateCategoryBreakdown(expenseTransactions: Transaction[]): CategoryBreakdownItem[] {
-  if (!expenseTransactions || expenseTransactions.length === 0) {
-    return []
-  }
+// Validation utilities
+export function validateEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
 
-  const categoryTotals = new Map<string, { amount: number; color: string; name: string }>()
-  let totalExpenses = 0
+export function validatePassword(password: string): boolean {
+  // At least 8 characters, contains at least one letter and one number
+  return password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password)
+}
 
-  expenseTransactions.forEach(transaction => {
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    totalExpenses += amount
-
-    // Handle category data safely
-    let categoryName = 'Unknown Category'
-    let categoryColor = '#999999'
-
-    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
-      categoryName = transaction.metadata.category.metadata.name || 'Unknown Category'
-      categoryColor = transaction.metadata.category.metadata.color || '#999999'
+// Array utilities
+export function groupBy<T>(array: T[], keyFn: (item: T) => string): Record<string, T[]> {
+  return array.reduce((groups, item) => {
+    const key = keyFn(item)
+    if (!groups[key]) {
+      groups[key] = []
     }
-
-    const existing = categoryTotals.get(categoryName)
-    if (existing) {
-      existing.amount += amount
-    } else {
-      categoryTotals.set(categoryName, {
-        amount,
-        color: categoryColor,
-        name: categoryName
-      })
-    }
-  })
-
-  // Convert to array and calculate percentages
-  const breakdown: CategoryBreakdownItem[] = Array.from(categoryTotals.entries()).map(([name, data]) => ({
-    name: data.name,
-    amount: data.amount,
-    color: data.color,
-    percentage: totalExpenses > 0 ? Math.round((data.amount / totalExpenses) * 100) : 0
-  }))
-
-  // Sort by amount (highest first)
-  return breakdown.sort((a, b) => b.amount - a.amount)
+    groups[key].push(item)
+    return groups
+  }, {} as Record<string, T[]>)
 }
 
-export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  if (!transactions || transactions.length === 0) {
-    return []
-  }
-
-  const monthlyTotals = new Map<string, { income: number; expenses: number }>()
-
-  transactions.forEach(transaction => {
-    const date = new Date(transaction.metadata.date)
-    const monthKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-    const amount = Math.abs(transaction.metadata.amount || 0)
-
-    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
+export function sortBy<T>(array: T[], keyFn: (item: T) => any, direction: 'asc' | 'desc' = 'asc'): T[] {
+  return [...array].sort((a, b) => {
+    const aVal = keyFn(a)
+    const bVal = keyFn(b)
     
-    if (transaction.metadata.type?.key === 'income') {
-      existing.income += amount
-    } else {
-      existing.expenses += amount
-    }
-
-    monthlyTotals.set(monthKey, existing)
+    if (aVal < bVal) return direction === 'asc' ? -1 : 1
+    if (aVal > bVal) return direction === 'asc' ? 1 : -1
+    return 0
   })
-
-  // Convert to array and calculate net
-  const monthlyData: MonthlyDataItem[] = Array.from(monthlyTotals.entries()).map(([month, data]) => ({
-    month,
-    income: data.income,
-    expenses: data.expenses,
-    net: data.income - data.expenses
-  }))
-
-  // Sort by date (most recent first)
-  return monthlyData.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
 }
 
-// Safe environment variable getters with proper TypeScript handling
-export function getRequiredEnvVar(key: string): string {
-  const value = process.env[key]
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`)
-  }
-  return value
+// Number utilities
+export function roundToDecimals(num: number, decimals: number = 2): number {
+  return Math.round(num * Math.pow(10, decimals)) / Math.pow(10, decimals)
 }
 
-export function getCosmicBucketSlug(): string {
-  return getRequiredEnvVar('COSMIC_BUCKET_SLUG')
-}
-
-export function getCosmicReadKey(): string {
-  return getRequiredEnvVar('COSMIC_READ_KEY')
-}
-
-export function getCosmicWriteKey(): string {
-  return getRequiredEnvVar('COSMIC_WRITE_KEY')
-}
-
-// JWT Secret getter with validation
-export function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is required')
-  }
-  if (secret.length < 32) {
-    throw new Error('JWT_SECRET must be at least 32 characters long')
-  }
-  return secret
-}
-
-// Safe string to number conversion
-export function safeParseFloat(value: string | number | undefined): number {
-  if (typeof value === 'number') return value
-  if (!value || typeof value !== 'string') return 0
-  
-  const parsed = parseFloat(value)
-  return isNaN(parsed) ? 0 : parsed
-}
-
-// Safe date formatting
-export function safeDateFormat(dateString: string | undefined): string {
-  if (!dateString) return 'No date'
+// Local storage utilities with error handling
+export function getFromLocalStorage(key: string): string | null {
+  if (typeof window === 'undefined') return null
   
   try {
-    return formatDate(dateString)
-  } catch {
-    return 'Invalid date'
+    return localStorage.getItem(key)
+  } catch (error) {
+    console.error('Error reading from localStorage:', error)
+    return null
   }
 }
 
-// Generate crypto-secure random string for tokens
-export function generateSecureToken(length: number = 32): string {
+export function setToLocalStorage(key: string, value: string): boolean {
+  if (typeof window === 'undefined') return false
+  
+  try {
+    localStorage.setItem(key, value)
+    return true
+  } catch (error) {
+    console.error('Error writing to localStorage:', error)
+    return false
+  }
+}
+
+export function removeFromLocalStorage(key: string): boolean {
+  if (typeof window === 'undefined') return false
+  
+  try {
+    localStorage.removeItem(key)
+    return true
+  } catch (error) {
+    console.error('Error removing from localStorage:', error)
+    return false
+  }
+}
+
+// Type guards
+export function isValidDate(date: any): date is Date {
+  return date instanceof Date && !isNaN(date.getTime())
+}
+
+export function isValidNumber(value: any): value is number {
+  return typeof value === 'number' && !isNaN(value) && isFinite(value)
+}
+
+// Theme utilities
+export function getSystemTheme(): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'light'
+  
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches 
+    ? 'dark' 
+    : 'light'
+}
+
+// Safe property access utilities
+export function safeAccess<T>(obj: any, path: string, defaultValue: T): T {
+  if (!obj || typeof obj !== 'object') return defaultValue
+  
+  const keys = path.split('.')
+  let current = obj
+  
+  for (const key of keys) {
+    if (current && typeof current === 'object' && key in current) {
+      current = current[key]
+    } else {
+      return defaultValue
+    }
+  }
+  
+  return current !== undefined ? current : defaultValue
+}
+
+// Calculate percentage
+export function calculatePercentage(part: number, total: number): number {
+  if (total === 0) return 0
+  return roundToDecimals((part / total) * 100, 1)
+}
+
+// Format file size
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  
+  return roundToDecimals(bytes / Math.pow(k, i), 2) + ' ' + sizes[i]
+}
+
+// Debounce function
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: NodeJS.Timeout
+  
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => func(...args), delay)
+  }
+}
+
+// Get month name
+export function getMonthName(monthIndex: number): string {
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ]
+  return months[monthIndex] || 'Unknown'
+}
+
+// Deep clone utility
+export function deepClone<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj
+  if (obj instanceof Date) return new Date(obj.getTime()) as any
+  if (obj instanceof Array) return obj.map(item => deepClone(item)) as any
+  
+  const clonedObj = {} as { [key: string]: any }
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      clonedObj[key] = deepClone(obj[key])
+    }
+  }
+  
+  return clonedObj as T
+}
+
+// Check if object is empty
+export function isEmpty(obj: any): boolean {
+  if (obj === null || obj === undefined) return true
+  if (typeof obj === 'string' || Array.isArray(obj)) return obj.length === 0
+  if (typeof obj === 'object') return Object.keys(obj).length === 0
+  return false
+}
+
+// Random ID generator
+export function generateId(length: number = 8): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   let result = ''
   
-  // Use crypto.getRandomValues if available (browser/Node.js with crypto)
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    const array = new Uint8Array(length)
-    crypto.getRandomValues(array)
-    
-    for (let i = 0; i < length; i++) {
-      result += chars[array[i] % chars.length]
-    }
-  } else {
-    // Fallback to Math.random (less secure but functional)
-    for (let i = 0; i < length; i++) {
-      result += chars[Math.floor(Math.random() * chars.length)]
-    }
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   
   return result
