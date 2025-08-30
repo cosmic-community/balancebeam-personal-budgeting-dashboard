@@ -1,22 +1,20 @@
 import { SignJWT, jwtVerify } from 'jose'
-import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
+import bcrypt from 'bcryptjs'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-here-change-in-production'
-)
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key')
 
-export async function signJWT(payload: JWTPayload): Promise<string> {
-  return await new SignJWT(payload)
+export async function generateJWT(payload: JWTPayload): Promise<string> {
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET)
+    .sign(secret)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
     console.error('JWT verification failed:', error)
@@ -27,29 +25,24 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
+  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
   
-  return null
+  // Handle cookie format (for server-side requests)
+  if (authHeader.includes('auth-token=')) {
+    const match = authHeader.match(/auth-token=([^;]+)/)
+    return match ? match[1] : null
+  }
+  
+  return authHeader
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  const saltRounds = 12
-  return await bcrypt.hash(password, saltRounds)
+  return bcrypt.hash(password, 12)
 }
 
-export async function comparePasswords(password: string, hashedPassword: string): Promise<boolean> {
-  return await bcrypt.compare(password, hashedPassword)
-}
-
-// Helper function to get user ID from request
-export async function getUserFromRequest(request: Request): Promise<string | null> {
-  const authHeader = request.headers.get('authorization')
-  const token = extractTokenFromHeader(authHeader)
-  
-  if (!token) return null
-  
-  const payload = await verifyJWT(token)
-  return payload?.userId || null
+export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword)
 }
