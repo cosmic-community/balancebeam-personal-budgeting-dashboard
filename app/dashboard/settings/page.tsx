@@ -2,10 +2,10 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { Category, User } from '@/types'
+import { User, Category, AuthUser } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
-import CategoryManager from '@/components/CategoryManager'
 import SettingsForm from '@/components/SettingsForm'
+import CategoryManager from '@/components/CategoryManager'
 
 async function getSettingsData(userId: string) {
   try {
@@ -16,7 +16,7 @@ async function getSettingsData(userId: string) {
     })
     const user = userResponse.object as User
 
-    // Get categories
+    // Get user's categories
     const categoriesResponse = await cosmic.objects
       .find({ 
         type: 'categories',
@@ -45,6 +45,7 @@ export default async function SettingsPage() {
   const headersList = await headers()
   const authHeader = headersList.get('authorization') || headersList.get('cookie')
   
+  // Extract token from cookie if present
   let token: string | null = extractTokenFromHeader(authHeader)
   if (!token && authHeader?.includes('auth-token=')) {
     token = authHeader.split('auth-token=')[1]?.split(';')[0] || null
@@ -65,22 +66,32 @@ export default async function SettingsPage() {
     redirect('/login')
   }
 
+  // Convert User to AuthUser for component compatibility
+  const authUser: AuthUser = {
+    id: data.user.id,
+    email: data.user.metadata.email,
+    full_name: data.user.metadata.full_name,
+    dark_mode: data.user.metadata.dark_mode || false
+  }
+
   return (
     <DashboardLayout user={data.user}>
       <div className="space-y-grid-gap">
+        {/* Page Header */}
         <div>
-          <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
+          <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
             Settings
           </h1>
-          <p className="text-text-secondary-light dark:text-text-secondary-dark">
-            Manage your account and preferences
+          <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
+            Manage your account preferences and categories
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-grid-gap">
-          <SettingsForm user={data.user} />
-          <CategoryManager categories={data.categories} />
-        </div>
+        {/* Settings Form */}
+        <SettingsForm user={authUser} />
+
+        {/* Category Manager */}
+        <CategoryManager categories={data.categories} />
       </div>
     </DashboardLayout>
   )
