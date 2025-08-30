@@ -5,6 +5,7 @@ import { cosmic, hasStatus } from '@/lib/cosmic'
 import { Transaction, Category, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import TransactionsList from '@/components/TransactionsList'
+import TransactionForm from '@/components/TransactionForm'
 
 async function getTransactionsData(userId: string) {
   try {
@@ -15,7 +16,7 @@ async function getTransactionsData(userId: string) {
     })
     const user = userResponse.object as User
 
-    // Get transactions with category data
+    // Get transactions with categories populated
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',
@@ -23,8 +24,15 @@ async function getTransactionsData(userId: string) {
       })
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
-    
+
     const transactions = transactionsResponse.objects as Transaction[]
+
+    // Sort transactions by date (newest first)
+    transactions.sort((a, b) => {
+      const dateA = new Date(a.metadata.date).getTime()
+      const dateB = new Date(b.metadata.date).getTime()
+      return dateB - dateA
+    })
 
     // Get categories for the form
     const categoriesResponse = await cosmic.objects
@@ -80,22 +88,26 @@ export default async function TransactionsPage() {
   return (
     <DashboardLayout user={data.user}>
       <div className="space-y-grid-gap">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
-              Transactions
-            </h1>
-            <p className="text-text-secondary-light dark:text-text-secondary-dark">
-              Manage your income and expenses
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            Transactions
+          </h1>
+          <p className="text-text-secondary-light dark:text-text-secondary-dark">
+            Add and manage your income and expenses
+          </p>
         </div>
 
-        <TransactionsList 
-          transactions={data.transactions}
-          categories={data.categories}
-          userId={payload.userId}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-grid-gap">
+          <div className="lg:col-span-1">
+            <TransactionForm categories={data.categories} />
+          </div>
+          <div className="lg:col-span-2">
+            <TransactionsList 
+              transactions={data.transactions} 
+              categories={data.categories}
+            />
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   )
