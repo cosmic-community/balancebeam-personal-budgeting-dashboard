@@ -152,8 +152,8 @@ export function isValidDate(date: string): boolean {
   return !isNaN(new Date(date).getTime())
 }
 
-export function formatDateForInput(date: string): string {
-  const d = new Date(date)
+export function formatDateForInput(date: string | Date): string {
+  const d = typeof date === 'string' ? new Date(date) : date
   return d.toISOString().split('T')[0]
 }
 

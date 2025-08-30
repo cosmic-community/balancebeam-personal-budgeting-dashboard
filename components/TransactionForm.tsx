@@ -17,7 +17,8 @@ export default function TransactionForm({ categories, onSuccess, editTransaction
     amount: 0,
     category: '',
     description: '',
-    date: formatDateForInput(new Date())
+    // Fixed: Convert Date to string properly
+    date: formatDateForInput(new Date().toISOString())
   })
 
   // Load edit data if provided
@@ -30,7 +31,8 @@ export default function TransactionForm({ categories, onSuccess, editTransaction
           ? editTransaction.metadata.category.id 
           : editTransaction.metadata.category || '',
         description: editTransaction.metadata.description || '',
-        date: formatDateForInput(editTransaction.metadata.date || new Date())
+        // Fixed: Convert Date to string properly
+        date: formatDateForInput((editTransaction.metadata.date || new Date()).toString())
       })
     }
   }, [editTransaction])
@@ -67,7 +69,7 @@ export default function TransactionForm({ categories, onSuccess, editTransaction
             amount: 0,
             category: '',
             description: '',
-            date: formatDateForInput(new Date())
+            date: formatDateForInput(new Date().toISOString())
           })
         }
         
