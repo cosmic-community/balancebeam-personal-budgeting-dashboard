@@ -1,23 +1,32 @@
 import { SignJWT, jwtVerify } from 'jose'
-import { JWTPayload } from '@/types'
+import bcrypt from 'bcryptjs'
+import { getJWTSecret } from './utils'
+import { JWTPayload } from '../types'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-here-change-in-production'
-)
+const secret = new TextEncoder().encode(getJWTSecret())
 
-// Sign a JWT token
+export async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12
+  return await bcrypt.hash(password, saltRounds)
+}
+
+export async function comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
+  return await bcrypt.compare(plainPassword, hashedPassword)
+}
+
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  return await new SignJWT(payload)
+  const jwt = await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET)
+    .sign(secret)
+  
+  return jwt
 }
 
-// Verify a JWT token
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
     console.error('JWT verification failed:', error)
@@ -25,7 +34,6 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   }
 }
 
-// Extract token from Authorization header
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
@@ -34,21 +42,4 @@ export function extractTokenFromHeader(authHeader: string | null): string | null
   }
   
   return null
-}
-
-// Hash password using bcrypt-style approach (simplified for this context)
-export async function hashPassword(password: string): Promise<string> {
-  // In a real application, use bcryptjs or similar
-  // For now, we'll use a simple approach with crypto
-  const encoder = new TextEncoder()
-  const data = encoder.encode(password + 'salt')
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-// Verify password against hash
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const hashedInput = await hashPassword(password)
-  return hashedInput === hash
 }
