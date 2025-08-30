@@ -8,21 +8,18 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "prebuild": "bun run type-check",
-    "postbuild": "node scripts/inject-console-capture.js"
+    "prebuild": "bun run type-check"
   },
   "dependencies": {
     "@cosmicjs/sdk": "^1.5.5",
-    "@types/bcryptjs": "^2.4.6",
-    "bcryptjs": "^2.4.3",
-    "clsx": "^2.0.0",
+    "bcrypt": "^5.1.1",
     "jose": "^5.2.0",
     "next": "15.1.0",
     "react": "^18",
-    "react-dom": "^18",
-    "tailwind-merge": "^2.2.0"
+    "react-dom": "^18"
   },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
