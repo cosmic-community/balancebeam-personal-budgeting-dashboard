@@ -1,37 +1,23 @@
-import Link from 'next/link'
-import LoginForm from '@/components/LoginForm'
+'use client'
+
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 export default function LoginPage() {
+  const router = useRouter()
+
+  // Automatically redirect to dashboard
+  useEffect(() => {
+    router.push('/dashboard')
+  }, [router])
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Welcome Back
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              Sign in to your BalanceBeam account
-            </p>
-          </div>
-
-          {/* Login Form */}
-          <LoginForm />
-
-          {/* Footer */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-600 dark:text-gray-400">
-              Don't have an account?{' '}
-              <Link 
-                href="/signup" 
-                className="text-primary-600 hover:text-primary-700 dark:text-primary-400 font-semibold"
-              >
-                Sign up
-              </Link>
-            </p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background-light dark:bg-background-dark flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-text-secondary-light dark:text-text-secondary-dark">
+          Redirecting to dashboard...
+        </p>
       </div>
     </div>
   )

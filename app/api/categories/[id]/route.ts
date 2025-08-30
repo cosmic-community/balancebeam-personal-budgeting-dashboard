@@ -1,7 +1,6 @@
 // app/api/categories/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic } from '@/lib/cosmic'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { CategoryFormData } from '@/types'
 
 export async function PUT(
@@ -11,25 +10,6 @@ export async function PUT(
   try {
     // IMPORTANT: In Next.js 15+, params are now Promises and MUST be awaited
     const { id } = await params
-
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
-    
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const payload = await verifyJWT(token)
-    if (!payload) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      )
-    }
 
     const body: Partial<CategoryFormData> = await request.json()
     const { name, color, type } = body
@@ -67,25 +47,6 @@ export async function DELETE(
   try {
     // IMPORTANT: In Next.js 15+, params are now Promises and MUST be awaited
     const { id } = await params
-
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
-    
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const payload = await verifyJWT(token)
-    if (!payload) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      )
-    }
 
     // Delete category
     await cosmic.objects.deleteOne(id)

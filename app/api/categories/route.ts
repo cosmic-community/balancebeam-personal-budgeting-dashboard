@@ -1,30 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { generateSlug } from '@/lib/utils'
 import { CategoryFormData } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
-    
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const payload = await verifyJWT(token)
-    if (!payload) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      )
-    }
-
     const body: CategoryFormData = await request.json()
     const { name, color, type } = body
 
@@ -36,13 +16,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get the first user to associate the category with
+    const userResponse = await cosmic.objects
+      .find({ type: 'users' })
+      .props(['id'])
+      .limit(1)
+    
+    const userId = userResponse.objects[0]?.id || 'demo-user'
+
     // Create category
     const newCategory = await cosmic.objects.insertOne({
       type: 'categories',
       title: name,
-      slug: generateSlug(name + '-' + payload.userId + '-' + Date.now()),
+      slug: generateSlug(name + '-' + userId + '-' + Date.now()),
       metadata: {
-        user: payload.userId,
+        user: userId,
         name,
         color,
         type: {
@@ -64,30 +52,23 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
+    // Get the first user
+    const userResponse = await cosmic.objects
+      .find({ type: 'users' })
+      .props(['id'])
+      .limit(1)
     
-    if (!token) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
+    const userId = userResponse.objects[0]?.id
+
+    if (!userId) {
+      return NextResponse.json({ categories: [] })
     }
 
-    const payload = await verifyJWT(token)
-    if (!payload) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      )
-    }
-
-    // Get categories
+    // Get categories for the user
     const categoriesResponse = await cosmic.objects
       .find({ 
         type: 'categories',
-        'metadata.user': payload.userId 
+        'metadata.user': userId 
       })
       .props(['id', 'title', 'slug', 'metadata'])
 

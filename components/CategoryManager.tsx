@@ -22,12 +22,10 @@ export default function CategoryManager({ categories: initialCategories }: Categ
     setLoading(true)
 
     try {
-      const token = localStorage.getItem('auth-token')
       const response = await fetch('/api/categories', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData)
       })
@@ -52,12 +50,8 @@ export default function CategoryManager({ categories: initialCategories }: Categ
     if (!confirm('Are you sure you want to delete this category?')) return
 
     try {
-      const token = localStorage.getItem('auth-token')
       const response = await fetch(`/api/categories/${categoryId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        method: 'DELETE'
       })
 
       if (response.ok) {

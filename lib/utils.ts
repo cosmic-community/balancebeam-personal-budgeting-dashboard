@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwindcss-merge'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem, getTransactionCategoryName, getTransactionCategoryColor } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -74,4 +75,65 @@ export function formatDate(dateString: string): string {
 export function calculatePercentage(value: number, total: number): number {
   if (total === 0) return 0
   return Math.round((value / total) * 100)
+}
+
+// Calculate category breakdown for expenses
+export function calculateCategoryBreakdown(expenseTransactions: Transaction[]): CategoryBreakdownItem[] {
+  const categoryTotals: Record<string, { amount: number; color: string }> = {}
+
+  expenseTransactions.forEach(transaction => {
+    const categoryName = getTransactionCategoryName(transaction)
+    const categoryColor = getTransactionCategoryColor(transaction)
+    const amount = Math.abs(transaction.metadata.amount || 0)
+
+    if (!categoryTotals[categoryName]) {
+      categoryTotals[categoryName] = { amount: 0, color: categoryColor }
+    }
+    categoryTotals[categoryName].amount += amount
+  })
+
+  const totalExpenses = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
+
+  return Object.entries(categoryTotals).map(([name, data]) => ({
+    name,
+    amount: data.amount,
+    color: data.color,
+    percentage: calculatePercentage(data.amount, totalExpenses)
+  }))
+}
+
+// Calculate monthly data for cash flow chart
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
+  const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
+
+  transactions.forEach(transaction => {
+    const date = new Date(transaction.metadata.date || transaction.created_at)
+    const monthKey = date.toISOString().substring(0, 7) // YYYY-MM format
+    const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+
+    if (!monthlyTotals[monthKey]) {
+      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
+    }
+
+    const amount = Math.abs(transaction.metadata.amount || 0)
+    if (transaction.metadata.type?.key === 'income') {
+      monthlyTotals[monthKey].income += amount
+    } else {
+      monthlyTotals[monthKey].expenses += amount
+    }
+  })
+
+  return Object.entries(monthlyTotals)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([monthKey, data]) => {
+      const date = new Date(monthKey + '-01')
+      const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      
+      return {
+        month: monthName,
+        income: data.income,
+        expenses: data.expenses,
+        net: data.income - data.expenses
+      }
+    })
 }

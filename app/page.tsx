@@ -1,13 +1,14 @@
 import Hero from '@/components/Hero'
 import Features from '@/components/Features'
 import CallToAction from '@/components/CallToAction'
+import { cosmic } from '@/lib/cosmic'
 
-export default function HomePage() {
+export default async function HomePage() {
   return (
-    <main className="min-h-screen bg-background-light dark:bg-background-dark">
+    <div className="min-h-screen">
       <Hero />
       <Features />
       <CallToAction />
-    </main>
+    </div>
   )
 }

@@ -1,7 +1,4 @@
-import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
 import Link from 'next/link'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
 import { Transaction, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
@@ -11,20 +8,37 @@ import CategoryPieChart from '@/components/CategoryPieChart'
 import RecentTransactions from '@/components/RecentTransactions'
 import { calculateCategoryBreakdown, calculateMonthlyData } from '@/lib/utils'
 
-async function getDashboardData(userId: string) {
+async function getDashboardData() {
   try {
-    // Get user data
-    const userResponse = await cosmic.objects.findOne({
-      type: 'users',
-      id: userId
-    })
-    const user = userResponse.object as User
+    // Get the first user from the system (demo user)
+    const userResponse = await cosmic.objects
+      .find({ type: 'users' })
+      .props(['id', 'title', 'slug', 'metadata'])
+      .limit(1)
+    
+    const user = userResponse.objects[0] as User
 
-    // Get all transactions for user with category data
+    if (!user) {
+      // Return empty data if no user exists
+      return {
+        user: null,
+        transactions: [],
+        stats: {
+          totalIncome: 0,
+          totalExpenses: 0,
+          netBalance: 0,
+          recentTransactions: [],
+          categoryBreakdown: [],
+          monthlyData: []
+        }
+      }
+    }
+
+    // Get all transactions for the demo user with category data
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',
-        'metadata.user': userId 
+        'metadata.user': user.id 
       })
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
@@ -85,38 +99,33 @@ async function getDashboardData(userId: string) {
 }
 
 export default async function DashboardPage() {
-  const headersList = await headers()
-  const authHeader = headersList.get('authorization') || headersList.get('cookie')
+  const data = await getDashboardData()
   
-  // Extract token from cookie if present
-  let token: string | null = extractTokenFromHeader(authHeader)
-  if (!token && authHeader?.includes('auth-token=')) {
-    token = authHeader.split('auth-token=')[1]?.split(';')[0] || null
-  }
-
-  if (!token) {
-    redirect('/login')
-  }
-
-  const payload = await verifyJWT(token)
-  if (!payload) {
-    redirect('/login')
-  }
-
-  const data = await getDashboardData(payload.userId)
-  
-  if (!data.user) {
-    redirect('/login')
+  // Create a default user if none exists
+  const defaultUser: User = data.user || {
+    id: 'demo-user',
+    slug: 'demo-user',
+    title: 'Demo User',
+    type: 'users',
+    created_at: new Date().toISOString(),
+    modified_at: new Date().toISOString(),
+    metadata: {
+      full_name: 'Demo User',
+      email: 'demo@example.com',
+      password_hash: '',
+      dark_mode: false,
+      created_at: '2025-01-01'
+    }
   }
 
   return (
-    <DashboardLayout user={data.user}>
+    <DashboardLayout user={defaultUser}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
-              Hello, {data.user.metadata.full_name}
+              Hello, {defaultUser.metadata.full_name}
             </h1>
             <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
               It's {new Date().toLocaleDateString('en-US', { 
@@ -129,7 +138,7 @@ export default async function DashboardPage() {
           </div>
           <div className="flex gap-3">
             <Link href="/dashboard/transactions" className="btn-secondary btn-small">
-              Add Transaction
+              View Transactions
             </Link>
             <Link href="/dashboard/transactions" className="btn-primary btn-small">
               New Transaction
