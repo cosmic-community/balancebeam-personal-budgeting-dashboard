@@ -2,54 +2,49 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 
-type Theme = 'light' | 'dark'
-
-type ThemeContextType = {
-  theme: Theme
-  toggleTheme: () => void
+interface ThemeContextType {
+  isDarkMode: boolean
+  toggleDarkMode: () => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
-interface ThemeProviderProps {
-  children: React.ReactNode
-}
-
-export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>('light')
-  const [mounted, setMounted] = useState(false)
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [isDarkMode, setIsDarkMode] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
-    const savedTheme = localStorage.getItem('theme') as Theme | null
-    if (savedTheme) {
-      setTheme(savedTheme)
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setTheme('dark')
+    // Check for saved preference or system preference
+    const savedTheme = localStorage.getItem('theme')
+    const systemDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
+    
+    const shouldBeDark = savedTheme === 'dark' || (!savedTheme && systemDarkMode)
+    setIsDarkMode(shouldBeDark)
+    
+    // Apply theme class to document
+    if (shouldBeDark) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
     }
   }, [])
 
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem('theme', theme)
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
+  const toggleDarkMode = () => {
+    const newDarkMode = !isDarkMode
+    setIsDarkMode(newDarkMode)
+    
+    // Save preference
+    localStorage.setItem('theme', newDarkMode ? 'dark' : 'light')
+    
+    // Apply theme class to document
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
     }
-  }, [theme, mounted])
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light')
-  }
-
-  if (!mounted) {
-    return <div className="min-h-screen bg-background-light">{children}</div>
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode }}>
       {children}
     </ThemeContext.Provider>
   )
@@ -62,5 +57,3 @@ export function useTheme() {
   }
   return context
 }
-
-export default ThemeProvider
