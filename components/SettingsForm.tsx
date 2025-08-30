@@ -2,33 +2,43 @@
 
 import { useState } from 'react'
 import { isValidEmail } from '@/lib/utils'
-import { User } from '@/types'
+import { AuthUser } from '@/types'
 
 interface SettingsFormProps {
-  user: User
-  onUserUpdate?: (updatedUser: User) => void
+  user: AuthUser
+  onUserUpdate: (user: AuthUser) => void
 }
 
 export default function SettingsForm({ user, onUserUpdate }: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    full_name: user.metadata.full_name,
-    email: user.metadata.email,
-    dark_mode: user.metadata.dark_mode || false
+    full_name: user.full_name || '',
+    email: user.email || '',
+    dark_mode: user.dark_mode || false
+  })
+  
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
   })
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!formData.full_name.trim()) {
+      alert('Full name is required')
+      return
+    }
+    
+    if (!isValidEmail(formData.email)) {
+      alert('Please enter a valid email address')
+      return
+    }
+
     setLoading(true)
 
     try {
-      // Validate email
-      if (!isValidEmail(formData.email)) {
-        alert('Please enter a valid email address')
-        setLoading(false)
-        return
-      }
-
       const token = localStorage.getItem('auth-token')
       const response = await fetch('/api/user', {
         method: 'PUT',
@@ -41,103 +51,185 @@ export default function SettingsForm({ user, onUserUpdate }: SettingsFormProps) 
 
       if (response.ok) {
         const data = await response.json()
-        onUserUpdate?.(data.user)
-        alert('Settings updated successfully!')
+        onUserUpdate(data.user)
+        alert('Profile updated successfully!')
       } else {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update settings')
+        alert(errorData.error || 'Failed to update profile')
       }
     } catch (error) {
-      console.error('Settings update error:', error)
-      alert('Failed to update settings. Please try again.')
+      console.error('Profile update error:', error)
+      alert('Failed to update profile. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleThemeToggle = () => {
-    setFormData(prev => ({ ...prev, dark_mode: !prev.dark_mode }))
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
     
-    // Apply theme immediately
-    if (!formData.dark_mode) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('New passwords do not match')
+      return
+    }
+    
+    if (passwordData.newPassword.length < 6) {
+      alert('New password must be at least 6 characters long')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const token = localStorage.getItem('auth-token')
+      const response = await fetch('/api/user', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword
+        })
+      })
+
+      if (response.ok) {
+        setPasswordData({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        })
+        alert('Password updated successfully!')
+      } else {
+        const errorData = await response.json()
+        alert(errorData.error || 'Failed to update password')
+      }
+    } catch (error) {
+      console.error('Password update error:', error)
+      alert('Failed to update password. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <div>
-          <h3 className="card-title">Account Settings</h3>
-          <p className="card-subtitle">Update your personal information and preferences</p>
+    <div className="space-y-6">
+      {/* Profile Settings */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">Profile Settings</h3>
+          <p className="card-subtitle">Update your account information</p>
         </div>
-      </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-            Full Name
-          </label>
-          <input
-            type="text"
-            value={formData.full_name}
-            onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-            Email Address
-          </label>
-          <input
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
-            required
-          />
-        </div>
-
-        <div className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg">
+        
+        <form onSubmit={handleProfileUpdate} className="space-y-4">
           <div>
-            <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
-              Dark Mode
-            </p>
-            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-              Toggle between light and dark themes
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleThemeToggle}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-              formData.dark_mode 
-                ? 'bg-primary' 
-                : 'bg-gray-200 dark:bg-gray-700'
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                formData.dark_mode ? 'translate-x-6' : 'translate-x-1'
-              }`}
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Full Name
+            </label>
+            <input
+              type="text"
+              value={formData.full_name}
+              onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              required
             />
-          </button>
-        </div>
+          </div>
 
-        <div className="pt-4">
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              required
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="darkMode"
+              checked={formData.dark_mode}
+              onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
+              className="w-4 h-4 text-primary bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark rounded"
+            />
+            <label htmlFor="darkMode" className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+              Enable Dark Mode
+            </label>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
             className="w-full btn-primary"
           >
-            {loading ? 'Updating...' : 'Update Settings'}
+            {loading ? 'Updating...' : 'Update Profile'}
           </button>
+        </form>
+      </div>
+
+      {/* Password Change */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">Change Password</h3>
+          <p className="card-subtitle">Update your account password</p>
         </div>
-      </form>
+        
+        <form onSubmit={handlePasswordChange} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Current Password
+            </label>
+            <input
+              type="password"
+              value={passwordData.currentPassword}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              New Password
+            </label>
+            <input
+              type="password"
+              value={passwordData.newPassword}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              minLength={6}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              value={passwordData.confirmPassword}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              minLength={6}
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full btn-primary"
+          >
+            {loading ? 'Updating...' : 'Change Password'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }
