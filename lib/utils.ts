@@ -69,7 +69,7 @@ export function getCosmicBucketSlug(): string {
   if (!bucketSlug) {
     throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
   }
-  return bucketSlug as string
+  return bucketSlug
 }
 
 export function getCosmicReadKey(): string {
@@ -77,7 +77,7 @@ export function getCosmicReadKey(): string {
   if (!readKey) {
     throw new Error('COSMIC_READ_KEY environment variable is required')
   }
-  return readKey as string
+  return readKey
 }
 
 export function getCosmicWriteKey(): string {
@@ -85,7 +85,7 @@ export function getCosmicWriteKey(): string {
   if (!writeKey) {
     throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
-  return writeKey as string
+  return writeKey
 }
 
 // Add missing calculateCategoryBreakdown function
