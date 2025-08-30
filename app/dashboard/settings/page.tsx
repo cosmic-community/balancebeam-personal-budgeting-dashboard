@@ -1,43 +1,20 @@
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
-import { cosmic, hasStatus } from '@/lib/cosmic'
-import { User, Category, AuthUser } from '@/types'
+import { cosmic } from '@/lib/cosmic'
+import { User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import SettingsForm from '@/components/SettingsForm'
-import CategoryManager from '@/components/CategoryManager'
 
-async function getSettingsData(userId: string) {
+async function getUser(userId: string) {
   try {
-    // Get user data
     const userResponse = await cosmic.objects.findOne({
       type: 'users',
       id: userId
     })
-    const user = userResponse.object as User
-
-    // Get user's categories
-    const categoriesResponse = await cosmic.objects
-      .find({ 
-        type: 'categories',
-        'metadata.user': userId 
-      })
-      .props(['id', 'title', 'slug', 'metadata'])
-    
-    const categories = categoriesResponse.objects as Category[]
-
-    return {
-      user,
-      categories
-    }
+    return userResponse.object as User
   } catch (error) {
-    if (hasStatus(error) && error.status === 404) {
-      return {
-        user: null,
-        categories: []
-      }
-    }
-    throw error
+    return null
   }
 }
 
@@ -60,38 +37,45 @@ export default async function SettingsPage() {
     redirect('/login')
   }
 
-  const data = await getSettingsData(payload.userId)
+  const user = await getUser(payload.userId)
   
-  if (!data.user) {
+  if (!user) {
     redirect('/login')
   }
 
-  // Convert User to AuthUser for component compatibility
-  const authUser: AuthUser = {
-    id: data.user.id,
-    email: data.user.metadata.email,
-    full_name: data.user.metadata.full_name,
-    dark_mode: data.user.metadata.dark_mode || false
+  // Convert User to AuthUser format expected by SettingsForm
+  const authUser = {
+    id: user.id,
+    email: user.metadata.email,
+    full_name: user.metadata.full_name,
+    dark_mode: user.metadata.dark_mode || false
+  }
+
+  // Mock handler for user updates - this would normally trigger a revalidation
+  const handleUserUpdate = () => {
+    // In a real implementation, this would handle the user update
+    // For now, it's just a placeholder to satisfy the TypeScript requirement
+    console.log('User updated')
   }
 
   return (
-    <DashboardLayout user={data.user}>
+    <DashboardLayout user={user}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
         <div>
           <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
-            Settings
+            Account Settings
           </h1>
           <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Manage your account preferences and categories
+            Manage your account preferences and settings
           </p>
         </div>
 
         {/* Settings Form */}
-        <SettingsForm user={authUser} />
-
-        {/* Category Manager */}
-        <CategoryManager categories={data.categories} />
+        <SettingsForm 
+          user={authUser} 
+          onUserUpdate={handleUserUpdate}
+        />
       </div>
     </DashboardLayout>
   )
