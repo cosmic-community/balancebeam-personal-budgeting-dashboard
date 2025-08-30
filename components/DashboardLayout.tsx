@@ -1,99 +1,164 @@
 'use client'
 
-import { ReactNode } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useAuth } from '@/components/AuthProvider'
-import { useTheme } from '@/components/ThemeProvider'
+import { useTheme } from './ThemeProvider'
 import { User } from '@/types'
 
 interface DashboardLayoutProps {
-  children: ReactNode
+  children: React.ReactNode
   user: User
 }
 
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const { logout } = useAuth()
   const { isDarkMode, toggleDarkMode } = useTheme()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      // Call logout API
+      await fetch('/api/auth/logout', {
+        method: 'POST'
+      })
+      
+      // Clear local storage
+      localStorage.removeItem('auth-token')
+      
+      // Clear cookie
+      document.cookie = 'auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;'
+      
+      // Redirect to login
+      router.push('/login')
+      router.refresh()
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Force redirect even if API call fails
+      localStorage.removeItem('auth-token')
+      router.push('/login')
+    }
+  }
 
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: '📊' },
-    { name: 'Transactions', href: '/dashboard/transactions', icon: '💰' },
-    { name: 'Settings', href: '/dashboard/settings', icon: '⚙️' }
+    {
+      name: 'Dashboard',
+      href: '/dashboard',
+      icon: '📊'
+    },
+    {
+      name: 'Transactions',
+      href: '/dashboard/transactions',
+      icon: '💰'
+    },
+    {
+      name: 'Settings',
+      href: '/dashboard/settings',
+      icon: '⚙️'
+    }
   ]
-
-  const isActiveRoute = (href: string) => {
-    return pathname === href
-  }
 
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark">
-      {/* Top Navigation */}
-      <nav className="bg-card-light dark:bg-card-dark border-b border-border-light dark:border-border-dark shadow-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* Logo */}
-            <div className="flex items-center">
-              <Link href="/dashboard" className="text-2xl font-bold text-accent hover:text-accent-hover transition-colors">
-                BalanceBeam
-              </Link>
-            </div>
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        >
+          <div className="fixed inset-0 bg-black opacity-50"></div>
+        </div>
+      )}
 
-            {/* User Menu */}
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={toggleDarkMode}
-                className="p-2 rounded-card hover:bg-background-light dark:hover:bg-background-dark transition-colors"
-                aria-label="Toggle dark mode"
-              >
-                <span className="text-xl">{isDarkMode ? '☀️' : '🌙'}</span>
-              </button>
-              
-              <div className="flex items-center space-x-3">
-                <span className="text-body text-text-secondary-light dark:text-text-secondary-dark">
-                  {user.metadata?.full_name || user.title}
-                </span>
-                <button
-                  onClick={logout}
-                  className="text-body text-text-secondary-light dark:text-text-secondary-dark hover:text-error transition-colors px-3 py-1 rounded-card hover:bg-background-light dark:hover:bg-background-dark"
+      {/* Sidebar */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-surface-light dark:bg-surface-dark border-r border-border-light dark:border-border-dark transform ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}>
+        
+        {/* Logo */}
+        <div className="flex items-center justify-between h-16 px-6 border-b border-border-light dark:border-border-dark">
+          <Link href="/dashboard" className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            BalanceBeam
+          </Link>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 rounded-md hover:bg-background-light dark:hover:bg-background-dark"
+          >
+            <span className="text-text-secondary-light dark:text-text-secondary-dark">✕</span>
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="mt-8 px-4">
+          <ul className="space-y-2">
+            {navigation.map((item) => (
+              <li key={item.name}>
+                <Link
+                  href={item.href}
+                  className="flex items-center px-4 py-2 text-text-secondary-light dark:text-text-secondary-dark hover:bg-background-light dark:hover:bg-background-dark rounded-md transition-colors"
                 >
-                  Logout
-                </button>
+                  <span className="mr-3">{item.icon}</span>
+                  {item.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* User section */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border-light dark:border-border-dark">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white text-sm font-medium">
+                {user.metadata.full_name.charAt(0).toUpperCase()}
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                  {user.metadata.full_name}
+                </p>
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
+                  {user.metadata.email}
+                </p>
               </div>
             </div>
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 rounded-md hover:bg-background-light dark:hover:bg-background-dark"
+            >
+              <span className="text-text-secondary-light dark:text-text-secondary-dark">
+                {isDarkMode ? '☀️' : '🌙'}
+              </span>
+            </button>
           </div>
+          <button
+            onClick={handleLogout}
+            className="w-full text-left px-2 py-1 text-sm text-text-secondary-light dark:text-text-secondary-dark hover:bg-background-light dark:hover:bg-background-dark rounded-md transition-colors"
+          >
+            Sign out
+          </button>
         </div>
-      </nav>
+      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col lg:flex-row gap-grid-gap">
-          {/* Sidebar Navigation */}
-          <aside className="lg:w-64">
-            <nav className="space-y-2">
-              {navigation.map((item) => (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`nav-pill flex items-center space-x-3 w-full ${
-                    isActiveRoute(item.href) 
-                      ? 'nav-pill-active' 
-                      : 'nav-pill-inactive'
-                  }`}
-                >
-                  <span className="text-lg">{item.icon}</span>
-                  <span>{item.name}</span>
-                </Link>
-              ))}
-            </nav>
-          </aside>
-
-          {/* Main Content */}
-          <main className="flex-1">
-            {children}
-          </main>
+      {/* Main content */}
+      <div className="lg:pl-64">
+        {/* Top bar */}
+        <div className="sticky top-0 z-10 flex items-center justify-between h-16 px-6 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark lg:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-md hover:bg-background-light dark:hover:bg-background-dark"
+          >
+            <span className="text-text-secondary-light dark:text-text-secondary-dark">☰</span>
+          </button>
+          <Link href="/dashboard" className="text-xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            BalanceBeam
+          </Link>
+          <div className="w-8"></div>
         </div>
+
+        {/* Page content */}
+        <main className="p-6">
+          {children}
+        </main>
       </div>
     </div>
   )

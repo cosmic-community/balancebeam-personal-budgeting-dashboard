@@ -1,76 +1,69 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 interface ThemeContextType {
   isDarkMode: boolean
   toggleDarkMode: () => void
-  theme: 'light' | 'dark'
-  setTheme: (theme: 'light' | 'dark') => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function useTheme() {
   const context = useContext(ThemeContext)
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useTheme must be used within a ThemeProvider')
   }
   return context
 }
 
 interface ThemeProviderProps {
-  children: ReactNode
+  children: React.ReactNode
+  initialDarkMode?: boolean
 }
 
-export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+export function ThemeProvider({ children, initialDarkMode = false }: ThemeProviderProps) {
+  const [isDarkMode, setIsDarkMode] = useState(initialDarkMode)
   const [mounted, setMounted] = useState(false)
 
-  // Check for saved theme preference or default to 'light'
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
-    if (savedTheme) {
-      setTheme(savedTheme)
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setTheme('dark')
-    }
     setMounted(true)
+    // Load theme from localStorage on client side
+    const savedTheme = localStorage.getItem('theme')
+    if (savedTheme) {
+      setIsDarkMode(savedTheme === 'dark')
+    } else {
+      // Check system preference
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      setIsDarkMode(systemPrefersDark)
+    }
   }, [])
 
-  // Update localStorage and document class when theme changes
   useEffect(() => {
-    if (mounted) {
-      localStorage.setItem('theme', theme)
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
+    if (!mounted) return
+
+    // Apply theme to document
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
     }
-  }, [theme, mounted])
+  }, [isDarkMode, mounted])
 
   const toggleDarkMode = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light')
+    setIsDarkMode(prev => !prev)
   }
 
-  const value: ThemeContextType = {
-    isDarkMode: theme === 'dark',
-    toggleDarkMode,
-    theme,
-    setTheme,
-  }
-
-  // Prevent hydration mismatch by not rendering until mounted
+  // Don't render until mounted to avoid hydration mismatch
   if (!mounted) {
     return null
   }
 
   return (
-    <ThemeContext.Provider value={value}>
+    <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode }}>
       {children}
     </ThemeContext.Provider>
   )
 }
-
-export default ThemeProvider
