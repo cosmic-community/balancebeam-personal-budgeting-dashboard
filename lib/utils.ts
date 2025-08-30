@@ -1,5 +1,5 @@
 import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwindcss-merge'
+import { twMerge } from 'tailwind-merge'
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
