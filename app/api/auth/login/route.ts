@@ -17,40 +17,41 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by email
-    let user: User | undefined
+    let user: User | null = null
     try {
-      const userResponse = await cosmic.objects
+      const usersResponse = await cosmic.objects
         .find({ 
           type: 'users',
           'metadata.email': email 
         })
-        .props(['id', 'title', 'metadata'])
+        .props(['id', 'title', 'slug', 'metadata'])
+        .limit(1)
 
-      user = userResponse.objects[0] as User | undefined
+      if (usersResponse.objects.length > 0) {
+        user = usersResponse.objects[0] as User
+      }
     } catch (error) {
       if (hasStatus(error) && error.status === 404) {
-        // User not found
-        return NextResponse.json(
-          { error: 'Invalid credentials' },
-          { status: 401 }
-        )
+        // No users found - this is expected when user doesn't exist
+        user = null
+      } else {
+        throw error
       }
-      throw error
     }
 
     // Check if user exists
     if (!user) {
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: 'Invalid email or password' },
         { status: 401 }
       )
     }
 
-    // Verify password
+    // Verify password - user is guaranteed to be non-null here
     const isValidPassword = await verifyPassword(password, user.metadata.password_hash)
     if (!isValidPassword) {
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: 'Invalid email or password' },
         { status: 401 }
       )
     }
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
       dark_mode: user.metadata.dark_mode || false
     })
 
-    // Set HTTP-only cookie
+    // Set httpOnly cookie
     const response = NextResponse.json({
       user: {
         id: user.id,
