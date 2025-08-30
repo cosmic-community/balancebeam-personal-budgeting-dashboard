@@ -1,33 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { cosmic, hasStatus } from '@/lib/cosmic'
+import { cosmic } from '@/lib/cosmic'
 import { signJWT } from '@/lib/auth'
-import { validateEmail, validatePassword, generateSlug } from '@/lib/utils'
-import { User, RegisterRequest } from '@/types'
+import { generateSlug } from '@/lib/utils'
+import { RegisterRequest } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
     const body: RegisterRequest = await request.json()
     const { full_name, email, password, confirmPassword } = body
 
-    // Validate input
+    // Validation
     if (!full_name || !email || !password || !confirmPassword) {
       return NextResponse.json(
         { error: 'All fields are required' },
-        { status: 400 }
-      )
-    }
-
-    if (!validateEmail(email)) {
-      return NextResponse.json(
-        { error: 'Invalid email format' },
-        { status: 400 }
-      )
-    }
-
-    if (!validatePassword(password)) {
-      return NextResponse.json(
-        { error: 'Password must be at least 8 characters and contain letters and numbers' },
         { status: 400 }
       )
     }
@@ -39,31 +25,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (password.length < 8) {
+      return NextResponse.json(
+        { error: 'Password must be at least 8 characters long' },
+        { status: 400 }
+      )
+    }
+
     // Check if user already exists
     try {
-      const existingUsersResponse = await cosmic.objects
-        .find({ 
-          type: 'users',
-          'metadata.email': email 
-        })
-        .props(['id'])
-
-      if (existingUsersResponse.objects.length > 0) {
-        return NextResponse.json(
-          { error: 'User with this email already exists' },
-          { status: 409 }
-        )
-      }
-    } catch (error) {
-      if (!hasStatus(error) || error.status !== 404) {
+      await cosmic.objects.findOne({
+        type: 'users',
+        'metadata.email': email
+      })
+      
+      // If we get here, user exists
+      return NextResponse.json(
+        { error: 'User with this email already exists' },
+        { status: 400 }
+      )
+    } catch (error: any) {
+      // 404 means user doesn't exist, which is what we want
+      if (error.status !== 404) {
         throw error
       }
-      // 404 is expected when no users exist with this email
     }
 
     // Hash password
-    const saltRounds = 12
-    const password_hash = await bcrypt.hash(password, saltRounds)
+    const password_hash = await bcrypt.hash(password, 12)
 
     // Create user
     const newUser = await cosmic.objects.insertOne({
@@ -79,20 +68,21 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Generate JWT token
+    // Generate JWT
     const token = await signJWT({
       userId: newUser.object.id,
-      email
+      email: email
     })
 
+    // Return user data and token
     return NextResponse.json({
-      token,
       user: {
         id: newUser.object.id,
-        email,
-        full_name,
+        email: email,
+        full_name: full_name,
         dark_mode: false
-      }
+      },
+      token
     })
 
   } catch (error) {
