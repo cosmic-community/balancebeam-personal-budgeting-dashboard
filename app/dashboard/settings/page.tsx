@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { User, Category, AuthUser } from '@/types'
+import { User, Category } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import SettingsForm from '@/components/SettingsForm'
 import CategoryManager from '@/components/CategoryManager'
@@ -24,7 +24,7 @@ async function getSettingsData(userId: string) {
       })
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
-
+    
     const categories = categoriesResponse.objects as Category[]
 
     return { user, categories }
@@ -61,12 +61,12 @@ export default async function SettingsPage() {
     redirect('/login')
   }
 
-  // Convert User to AuthUser format to match component expectations
-  const authUser: AuthUser = {
+  // Convert User to AuthUser format expected by SettingsForm
+  const authUser = {
     id: data.user.id,
     email: data.user.metadata.email,
     full_name: data.user.metadata.full_name,
-    dark_mode: data.user.metadata.dark_mode ?? false
+    dark_mode: data.user.metadata.dark_mode || false
   }
 
   return (
@@ -78,15 +78,13 @@ export default async function SettingsPage() {
             Settings
           </h1>
           <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Manage your account preferences and budget categories
+            Manage your account settings and preferences
           </p>
         </div>
 
+        {/* Settings Form and Category Manager */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-grid-gap">
-          {/* User Settings */}
-          <SettingsForm user={authUser} />
-          
-          {/* Category Management */}
+          <SettingsForm user={authUser} onUpdate={() => {}} />
           <CategoryManager categories={data.categories} />
         </div>
       </div>
