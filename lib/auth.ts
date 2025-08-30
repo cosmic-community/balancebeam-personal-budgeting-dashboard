@@ -1,21 +1,21 @@
 import { SignJWT, jwtVerify } from 'jose'
-import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
+import bcrypt from 'bcryptjs'
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-256-bit-secret'
+  process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production'
 )
 
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
+  return await bcrypt.hash(password, 12)
 }
 
 export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-  return bcrypt.compare(password, hashedPassword)
+  return await bcrypt.compare(password, hashedPassword)
 }
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  return new SignJWT(payload)
+  return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('24h')
@@ -35,16 +35,16 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
-  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
   
-  // Handle cookie format
+  // Check for cookie format
   if (authHeader.includes('auth-token=')) {
     const match = authHeader.match(/auth-token=([^;]+)/)
     return match ? match[1] : null
   }
   
+  // Handle direct token case
   return authHeader || null
 }
