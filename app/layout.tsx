@@ -1,17 +1,13 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import AuthProvider from '@/components/AuthProvider'
+import { AuthProvider } from '@/components/AuthProvider'
 import ThemeProvider from '@/components/ThemeProvider'
+import CosmicBadge from '@/components/CosmicBadge'
+import { getCosmicBucketSlug } from '@/lib/utils'
 
 export const metadata: Metadata = {
   title: 'BalanceBeam - Personal Budgeting Dashboard',
-  description: 'Take control of your finances with BalanceBeam, a modern personal budgeting dashboard powered by Cosmic CMS.',
-  keywords: 'budgeting, personal finance, dashboard, money management, expenses, income',
-  openGraph: {
-    title: 'BalanceBeam - Personal Budgeting Dashboard',
-    description: 'Take control of your finances with BalanceBeam',
-    type: 'website',
-  },
+  description: 'Track your income, expenses, and financial goals with ease. A powerful personal budgeting dashboard built with Next.js and Cosmic CMS.',
 }
 
 export default function RootLayout({
@@ -19,15 +15,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  const bucketSlug = getCosmicBucketSlug()
+
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="antialiased">
+    <html lang="en">
+      <body className="font-inter antialiased">
         <ThemeProvider>
           <AuthProvider>
             {children}
           </AuthProvider>
         </ThemeProvider>
-        <script src="/dashboard-console-capture.js"></script>
+        <CosmicBadge bucketSlug={bucketSlug} />
       </body>
     </html>
   )
