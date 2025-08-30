@@ -63,7 +63,7 @@ export function getTransactionCategoryColor(transaction: Transaction): string {
   return '#999999'
 }
 
-// Fixed TypeScript error - properly handle undefined environment variables
+// FIXED: Properly handle undefined environment variables with explicit null checks
 export function getCosmicBucketSlug(): string {
   const bucketSlug = process.env.COSMIC_BUCKET_SLUG
   if (!bucketSlug) {
