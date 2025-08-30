@@ -6,7 +6,32 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Environment variable helpers with proper type safety
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(amount)
+}
+
+export function formatDate(date: string | Date): string {
+  const d = new Date(date)
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9 -]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
+}
+
+// Environment variable getters with proper type safety
 export function getCosmicBucketSlug(): string {
   const slug = process.env.COSMIC_BUCKET_SLUG
   if (!slug) {
@@ -31,165 +56,163 @@ export function getCosmicWriteKey(): string {
   return key
 }
 
-// Validation functions
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-export function validatePassword(password: string): { isValid: boolean; message?: string } {
-  if (password.length < 8) {
-    return { isValid: false, message: 'Password must be at least 8 characters long' }
+export function getJWTSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required')
   }
-  
-  if (!/(?=.*[a-z])/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one lowercase letter' }
-  }
-  
-  if (!/(?=.*[A-Z])/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one uppercase letter' }
-  }
-  
-  if (!/(?=.*\d)/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one number' }
-  }
-  
-  return { isValid: true }
+  return secret
 }
 
-// Utility functions
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD'
-  }).format(amount)
-}
-
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-export function formatDateForInput(dateString: string): string {
-  return new Date(dateString).toISOString().split('T')[0]
-}
-
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/--+/g, '-') // Replace multiple hyphens with single hyphen
-    .trim()
-}
-
-// Dashboard calculation functions
-export function calculateCategoryBreakdown(expenseTransactions: Transaction[]): CategoryBreakdownItem[] {
-  if (!expenseTransactions || expenseTransactions.length === 0) {
+// Calculate category breakdown for pie chart
+export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
+  if (!transactions || transactions.length === 0) {
     return []
   }
 
-  // Group by category
-  const categoryTotals: Record<string, { name: string; amount: number; color: string }> = {}
+  // Group by category and sum amounts
+  const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
   
-  let totalExpenses = 0
-  
-  expenseTransactions.forEach(transaction => {
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    totalExpenses += amount
-    
-    // Get category info safely
-    let categoryName = 'Unknown Category'
-    let categoryColor = '#999999'
-    
-    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
-      categoryName = transaction.metadata.category.metadata.name || 'Unknown Category'
-      categoryColor = transaction.metadata.category.metadata.color || '#999999'
+  transactions.forEach(transaction => {
+    if (!transaction.metadata?.category || !transaction.metadata?.amount) {
+      return // Skip invalid transactions
     }
-    
+
+    const category = transaction.metadata.category
+    let categoryName: string
+    let categoryColor: string
+
+    // Handle both populated and string category references
+    if (typeof category === 'object' && category !== null && 'metadata' in category) {
+      categoryName = category.metadata?.name || 'Unknown Category'
+      categoryColor = category.metadata?.color || '#999999'
+    } else {
+      categoryName = 'Unknown Category'
+      categoryColor = '#999999'
+    }
+
     if (!categoryTotals[categoryName]) {
       categoryTotals[categoryName] = {
-        name: categoryName,
         amount: 0,
-        color: categoryColor
+        color: categoryColor,
+        name: categoryName
       }
     }
     
-    categoryTotals[categoryName].amount += amount
+    categoryTotals[categoryName].amount += Math.abs(transaction.metadata.amount)
   })
+
+  // Calculate total for percentages
+  const total = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
   
-  // Convert to array and calculate percentages
-  return Object.values(categoryTotals)
-    .map(category => ({
-      name: category.name,
-      amount: category.amount,
-      color: category.color,
-      percentage: totalExpenses > 0 ? Math.round((category.amount / totalExpenses) * 100) : 0
-    }))
-    .sort((a, b) => b.amount - a.amount) // Sort by amount descending
+  if (total === 0) {
+    return []
+  }
+
+  // Convert to array with percentages
+  return Object.values(categoryTotals).map(category => ({
+    name: category.name,
+    amount: category.amount,
+    color: category.color,
+    percentage: Math.round((category.amount / total) * 100)
+  })).sort((a, b) => b.amount - a.amount)
 }
 
+// Calculate monthly data for cash flow chart
 export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
   if (!transactions || transactions.length === 0) {
     return []
   }
 
-  // Group by month
+  // Group by month-year
   const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
   
   transactions.forEach(transaction => {
+    if (!transaction.metadata?.date || !transaction.metadata?.amount || !transaction.metadata?.type) {
+      return // Skip invalid transactions
+    }
+
     const date = new Date(transaction.metadata.date)
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+    const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`
     
     if (!monthlyTotals[monthKey]) {
       monthlyTotals[monthKey] = { income: 0, expenses: 0 }
     }
     
-    const amount = transaction.metadata.amount || 0
+    const amount = Math.abs(transaction.metadata.amount)
     
-    if (transaction.metadata.type?.key === 'income') {
+    if (transaction.metadata.type.key === 'income') {
       monthlyTotals[monthKey].income += amount
-    } else if (transaction.metadata.type?.key === 'expense') {
-      monthlyTotals[monthKey].expenses += Math.abs(amount)
+    } else if (transaction.metadata.type.key === 'expense') {
+      monthlyTotals[monthKey].expenses += amount
     }
   })
-  
-  // Convert to array and sort by month
+
+  // Convert to array and sort by date
   return Object.entries(monthlyTotals)
     .map(([monthKey, totals]) => {
       const [year, month] = monthKey.split('-')
-      const date = new Date(parseInt(year), parseInt(month) - 1)
-      const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+      const date = new Date(parseInt(year), parseInt(month) - 1, 1)
       
       return {
-        month: monthName,
+        month: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
         income: totals.income,
         expenses: totals.expenses,
         net: totals.income - totals.expenses
       }
     })
     .sort((a, b) => {
-      // Sort by year and month
+      // Sort by the actual date for proper chronological order
       const dateA = new Date(a.month)
       const dateB = new Date(b.month)
       return dateA.getTime() - dateB.getTime()
     })
-    .slice(-6) // Get last 6 months
 }
 
-// Auth helpers
-export function hashPassword(password: string): Promise<string> {
-  // This would typically use bcrypt or similar
-  // For now, return a placeholder - this should be implemented with proper hashing
-  return Promise.resolve(`hashed_${password}`)
+// Safe property accessors for transaction data
+export function getTransactionCategoryName(transaction: Transaction): string {
+  if (!transaction.metadata?.category) {
+    return 'Unknown Category'
+  }
+
+  const category = transaction.metadata.category
+  if (typeof category === 'object' && category !== null && 'metadata' in category && category.metadata?.name) {
+    return category.metadata.name
+  }
+  
+  return 'Unknown Category'
 }
 
-export function comparePasswords(password: string, hashedPassword: string): Promise<boolean> {
-  // This would typically use bcrypt.compare or similar
-  // For now, return a simple check - this should be implemented with proper comparison
-  return Promise.resolve(`hashed_${password}` === hashedPassword)
+export function getTransactionCategoryColor(transaction: Transaction): string {
+  if (!transaction.metadata?.category) {
+    return '#999999'
+  }
+
+  const category = transaction.metadata.category
+  if (typeof category === 'object' && category !== null && 'metadata' in category && category.metadata?.color) {
+    return category.metadata.color
+  }
+  
+  return '#999999'
+}
+
+export function getTransactionAmount(transaction: Transaction): number {
+  return transaction.metadata?.amount || 0
+}
+
+export function getTransactionType(transaction: Transaction): 'income' | 'expense' | 'unknown' {
+  if (!transaction.metadata?.type?.key) {
+    return 'unknown'
+  }
+  
+  const type = transaction.metadata.type.key
+  return type === 'income' || type === 'expense' ? type : 'unknown'
+}
+
+export function getTransactionDate(transaction: Transaction): string {
+  return transaction.metadata?.date || new Date().toISOString().split('T')[0]
+}
+
+export function getTransactionDescription(transaction: Transaction): string {
+  return transaction.metadata?.description || 'No description'
 }
