@@ -1,26 +1,116 @@
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD'
+    currency: 'USD',
   }).format(amount)
 }
 
-export function formatDate(date: string | Date): string {
-  return new Intl.DateTimeFormat('en-US', {
+export function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
-    day: 'numeric'
-  }).format(new Date(date))
+    day: 'numeric',
+  })
 }
 
-// Fixed: Add proper null checks for environment variables
+export function formatDateForInput(dateString: string): string {
+  const date = new Date(dateString)
+  return date.toISOString().split('T')[0]
+}
+
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+export function classNames(...classes: (string | undefined | null | false)[]): string {
+  return classes.filter(Boolean).join(' ')
+}
+
+// Calculate category breakdown for expenses
+export function calculateCategoryBreakdown(transactions: any[]): Array<{
+  name: string
+  amount: number
+  color: string
+  percentage: number
+}> {
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
+
+  // Group transactions by category
+  const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
+  
+  transactions.forEach(transaction => {
+    if (transaction.metadata?.type?.key === 'expense') {
+      const categoryName = typeof transaction.metadata.category === 'object' 
+        ? transaction.metadata.category?.metadata?.name || 'Unknown'
+        : 'Unknown'
+      const categoryColor = typeof transaction.metadata.category === 'object'
+        ? transaction.metadata.category?.metadata?.color || '#999999'
+        : '#999999'
+      const amount = Math.abs(transaction.metadata.amount || 0)
+
+      if (!categoryTotals[categoryName]) {
+        categoryTotals[categoryName] = { amount: 0, color: categoryColor, name: categoryName }
+      }
+      categoryTotals[categoryName].amount += amount
+    }
+  })
+
+  // Calculate totals and percentages
+  const totalExpenses = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
+  
+  return Object.values(categoryTotals).map(category => ({
+    name: category.name,
+    amount: category.amount,
+    color: category.color,
+    percentage: totalExpenses > 0 ? (category.amount / totalExpenses) * 100 : 0
+  }))
+}
+
+// Calculate monthly data for cash flow chart
+export function calculateMonthlyData(transactions: any[]): Array<{
+  month: string
+  income: number
+  expenses: number
+  net: number
+}> {
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
+
+  const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
+
+  transactions.forEach(transaction => {
+    const date = new Date(transaction.metadata?.date || transaction.created_at)
+    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
+    const amount = Math.abs(transaction.metadata?.amount || 0)
+
+    if (!monthlyTotals[monthKey]) {
+      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
+    }
+
+    if (transaction.metadata?.type?.key === 'income') {
+      monthlyTotals[monthKey].income += amount
+    } else if (transaction.metadata?.type?.key === 'expense') {
+      monthlyTotals[monthKey].expenses += amount
+    }
+  })
+
+  return Object.entries(monthlyTotals)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, data]) => ({
+      month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      income: data.income,
+      expenses: data.expenses,
+      net: data.income - data.expenses
+    }))
+}
+
+// Environment variable getters with proper type safety
 export function getCosmicBucketSlug(): string {
   const slug = process.env.COSMIC_BUCKET_SLUG
   if (!slug) {
@@ -45,120 +135,10 @@ export function getCosmicWriteKey(): string {
   return key
 }
 
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/[\s_-]+/g, '-') // Replace spaces and underscores with hyphens
-    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
-}
-
-export function formatDateForInput(dateInput: string | Date): string {
-  const date = new Date(dateInput)
-  
-  // Check if date is valid
-  if (isNaN(date.getTime())) {
-    // Return current date if invalid
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  }
-  
-  return date.toISOString().split('T')[0]
-}
-
-export function calculateMonthlyData(transactions: any[]): any[] {
-  const monthlyMap = new Map()
-  
-  transactions.forEach(transaction => {
-    if (!transaction?.metadata?.date || !transaction?.metadata?.amount) {
-      return // Skip invalid transactions
-    }
-    
-    const date = new Date(transaction.metadata.date)
-    if (isNaN(date.getTime())) {
-      return // Skip invalid dates
-    }
-    
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    const amount = transaction.metadata.amount
-    
-    if (!monthlyMap.has(monthKey)) {
-      monthlyMap.set(monthKey, {
-        month: date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' }),
-        income: 0,
-        expenses: 0,
-        net: 0
-      })
-    }
-    
-    const monthData = monthlyMap.get(monthKey)
-    if (amount > 0) {
-      monthData.income += amount
-    } else {
-      monthData.expenses += Math.abs(amount)
-    }
-    monthData.net = monthData.income - monthData.expenses
-  })
-  
-  return Array.from(monthlyMap.values()).sort((a, b) => {
-    const dateA = new Date(a.month + ' 1')
-    const dateB = new Date(b.month + ' 1')
-    return dateA.getTime() - dateB.getTime()
-  })
-}
-
-// Fixed: Add proper null checks for the JWT signing function
-export async function signJWT(payload: any): Promise<string> {
-  const { SignJWT } = await import('jose')
+export function getJWTSecret(): string {
   const secret = process.env.JWT_SECRET
-  const issuer = process.env.JWT_ISSUER
-  
-  // Add proper null checks for environment variables
   if (!secret) {
     throw new Error('JWT_SECRET environment variable is required')
   }
-  if (!issuer) {
-    throw new Error('JWT_ISSUER environment variable is required')  
-  }
-  
-  const alg = 'HS256'
-  const jwt = await new SignJWT(payload)
-    .setProtectedHeader({ alg })
-    .setIssuedAt()
-    .setIssuer(issuer)
-    .setAudience('budgeting-app')
-    .setExpirationTime('24h')
-    .sign(new TextEncoder().encode(secret))
-  
-  return jwt
-}
-
-export async function verifyJWT(token: string): Promise<any> {
-  try {
-    const { jwtVerify } = await import('jose')
-    const secret = process.env.JWT_SECRET
-    const issuer = process.env.JWT_ISSUER
-    
-    // Add proper null checks for environment variables
-    if (!secret) {
-      throw new Error('JWT_SECRET environment variable is required')
-    }
-    if (!issuer) {
-      throw new Error('JWT_ISSUER environment variable is required')
-    }
-    
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(secret),
-      {
-        issuer,
-        audience: 'budgeting-app'
-      }
-    )
-    
-    return payload
-  } catch (error) {
-    console.error('JWT verification failed:', error)
-    return null
-  }
+  return secret
 }
