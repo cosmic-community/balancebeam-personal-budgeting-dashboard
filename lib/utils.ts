@@ -67,9 +67,10 @@ export function calculateCategoryBreakdown(expenses: Transaction[]): CategoryBre
     let categoryName = 'Unknown'
     let categoryColor = '#999999'
     
-    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category) {
-      categoryName = transaction.metadata.category.metadata?.name || 'Unknown'
-      categoryColor = transaction.metadata.category.metadata?.color || '#999999'
+    // Fixed: Add proper null checks for nested object properties
+    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category && transaction.metadata.category.metadata) {
+      categoryName = transaction.metadata.category.metadata.name || 'Unknown'
+      categoryColor = transaction.metadata.category.metadata.color || '#999999'
     }
     
     if (categoryTotals[categoryName]) {
