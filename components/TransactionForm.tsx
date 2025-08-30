@@ -2,18 +2,18 @@
 
 import { useState } from 'react'
 import { Category, TransactionFormData } from '@/types'
-import { generateSlug } from '@/lib/utils'
 
 interface TransactionFormProps {
   categories: Category[]
+  onSuccess?: () => void
 }
 
-export default function TransactionForm({ categories }: TransactionFormProps) {
+export default function TransactionForm({ categories, onSuccess }: TransactionFormProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
-    category: '',
+    category: categories.length > 0 ? categories[0].id : '',
     description: '',
     date: new Date().toISOString().split('T')[0]
   })
@@ -24,11 +24,20 @@ export default function TransactionForm({ categories }: TransactionFormProps) {
 
     try {
       const token = localStorage.getItem('auth-token')
+      if (!token) {
+        throw new Error('Authentication required')
+      }
+
+      // Validate category is selected
+      if (!formData.category) {
+        throw new Error('Please select a category')
+      }
+
       const response = await fetch('/api/transactions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token || ''}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(formData)
       })
@@ -38,84 +47,78 @@ export default function TransactionForm({ categories }: TransactionFormProps) {
         setFormData({
           type: 'expense',
           amount: 0,
-          category: '',
+          category: categories.length > 0 ? categories[0].id : '',
           description: '',
           date: new Date().toISOString().split('T')[0]
         })
-        
-        // Reload page to show updated transactions
-        window.location.reload()
+        onSuccess?.()
       } else {
-        const data = await response.json()
-        alert(data.error || 'Failed to create transaction')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create transaction')
       }
     } catch (error) {
       console.error('Transaction creation error:', error)
-      alert('Failed to create transaction. Please try again.')
+      alert(error instanceof Error ? error.message : 'Failed to create transaction. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  // Filter categories by type
-  const filteredCategories = categories.filter(cat => 
-    cat.metadata.type?.key === formData.type
-  )
+  // If no categories available, show message
+  if (categories.length === 0) {
+    return (
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">Add Transaction</h3>
+          <p className="card-subtitle">Record your income and expenses</p>
+        </div>
+        <div className="p-4 text-center text-text-secondary-light dark:text-text-secondary-dark">
+          <p>No categories available. Please create a category first.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="card">
       <div className="card-header">
         <h3 className="card-title">Add Transaction</h3>
-        <p className="card-subtitle">Record a new income or expense</p>
+        <p className="card-subtitle">Record your income and expenses</p>
       </div>
       
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-            Type
-          </label>
-          <div className="flex space-x-2">
-            <button
-              type="button"
-              onClick={() => setFormData(prev => ({ ...prev, type: 'expense', category: '' }))}
-              className={`px-4 py-2 rounded-md text-sm font-medium flex-1 ${
-                formData.type === 'expense'
-                  ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 border-red-200 dark:border-red-700'
-                  : 'bg-surface-light dark:bg-surface-dark text-text-secondary-light dark:text-text-secondary-dark border border-border-light dark:border-border-dark'
-              }`}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+              Type
+            </label>
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData(prev => ({ 
+                ...prev, 
+                type: e.target.value as 'income' | 'expense' 
+              }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
             >
-              Expense
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormData(prev => ({ ...prev, type: 'income', category: '' }))}
-              className={`px-4 py-2 rounded-md text-sm font-medium flex-1 ${
-                formData.type === 'income'
-                  ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 border-green-200 dark:border-green-700'
-                  : 'bg-surface-light dark:bg-surface-dark text-text-secondary-light dark:text-text-secondary-dark border border-border-light dark:border-border-dark'
-              }`}
-            >
-              Income
-            </button>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
           </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-            Amount
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-text-secondary-light dark:text-text-secondary-dark">$</span>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+              Amount ($)
+            </label>
             <input
               type="number"
               step="0.01"
               min="0"
               value={formData.amount || ''}
-              onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value || '0') }))}
-              className="w-full pl-8 pr-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark"
-              placeholder="0.00"
+              onChange={(e) => setFormData(prev => ({ 
+                ...prev, 
+                amount: parseFloat(e.target.value) || 0 
+              }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
               required
             />
           </div>
@@ -127,34 +130,37 @@ export default function TransactionForm({ categories }: TransactionFormProps) {
           </label>
           <select
             value={formData.category}
-            onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark"
+            onChange={(e) => setFormData(prev => ({ 
+              ...prev, 
+              category: e.target.value 
+            }))}
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
             required
           >
             <option value="">Select a category</option>
-            {filteredCategories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.metadata.name}
-              </option>
-            ))}
+            {categories
+              .filter(cat => cat.metadata.type?.key === formData.type)
+              .map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.metadata.name}
+                </option>
+              ))}
           </select>
-          {filteredCategories.length === 0 && (
-            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
-              No {formData.type} categories available. Create one in Settings first.
-            </p>
-          )}
         </div>
 
         <div>
           <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-            Description
+            Description (optional)
           </label>
           <input
             type="text"
             value={formData.description || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark"
-            placeholder="What was this for?"
+            onChange={(e) => setFormData(prev => ({ 
+              ...prev, 
+              description: e.target.value 
+            }))}
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+            placeholder="Enter description..."
           />
         </div>
 
@@ -165,18 +171,21 @@ export default function TransactionForm({ categories }: TransactionFormProps) {
           <input
             type="date"
             value={formData.date}
-            onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark"
+            onChange={(e) => setFormData(prev => ({ 
+              ...prev, 
+              date: e.target.value 
+            }))}
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
             required
           />
         </div>
 
         <button
           type="submit"
-          disabled={loading || !formData.category || !formData.amount}
-          className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading || !formData.category}
+          className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Adding...' : `Add ${formData.type === 'income' ? 'Income' : 'Expense'}`}
+          {loading ? 'Creating...' : 'Create Transaction'}
         </button>
       </form>
     </div>

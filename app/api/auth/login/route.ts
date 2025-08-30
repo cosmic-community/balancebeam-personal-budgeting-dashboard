@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { generateJWT } from '@/lib/auth'
-import { User, LoginRequest } from '@/types'
+import { signJWT } from '@/lib/auth'
+import { LoginRequest, User } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,60 +18,74 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by email
-    const usersResponse = await cosmic.objects
-      .find({ 
-        type: 'users',
-        'metadata.email': email 
-      })
-      .props(['id', 'title', 'metadata'])
+    let user: User | null = null
+    try {
+      const userResponse = await cosmic.objects
+        .find({ 
+          type: 'users',
+          'metadata.email': email.toLowerCase() 
+        })
+        .props(['id', 'title', 'slug', 'metadata'])
 
-    const users = usersResponse.objects as User[]
-    
-    if (users.length === 0) {
+      if (userResponse.objects && userResponse.objects.length > 0) {
+        user = userResponse.objects[0] as User
+      }
+    } catch (error) {
+      if (hasStatus(error) && error.status === 404) {
+        user = null
+      } else {
+        throw error
+      }
+    }
+
+    if (!user) {
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: 'Invalid email or password' },
         { status: 401 }
       )
     }
 
-    const user = users[0]
+    // Verify password - add null check for user
+    if (!user || !user.metadata?.password_hash) {
+      return NextResponse.json(
+        { error: 'Invalid email or password' },
+        { status: 401 }
+      )
+    }
 
-    // Verify password
     const isValidPassword = await bcrypt.compare(password, user.metadata.password_hash)
-    
     if (!isValidPassword) {
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: 'Invalid email or password' },
         { status: 401 }
       )
     }
 
-    // Generate JWT token
-    const token = await generateJWT({
+    // Create JWT token with null checks
+    const tokenPayload = {
       userId: user.id,
-      email: user.metadata.email
+      email: user.metadata.email,
+      full_name: user.metadata.full_name,
+      dark_mode: user.metadata.dark_mode || false
+    }
+
+    const token = await signJWT(tokenPayload)
+
+    // Return user data without password hash
+    const userData = {
+      id: user.id,
+      email: user.metadata.email,
+      full_name: user.metadata.full_name,
+      dark_mode: user.metadata.dark_mode || false
+    }
+
+    return NextResponse.json({
+      user: userData,
+      token
     })
 
-    // Return user data and token
-    return NextResponse.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.metadata.email,
-        full_name: user.metadata.full_name,
-        dark_mode: user.metadata.dark_mode || false
-      }
-    })
   } catch (error) {
     console.error('Login error:', error)
-    
-    if (hasStatus(error) && error.status === 404) {
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      )
-    }
-
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
