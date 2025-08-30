@@ -1,5 +1,6 @@
-import { clsx, type ClassValue } from 'clsx'
+import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -12,60 +13,46 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-export function formatDate(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  }).format(dateObj)
-}
-
-export function formatDateForInput(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toISOString().split('T')[0]
-}
-
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
+    .replace(/[^a-z0-9 -]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
 }
 
-// Cosmic environment variable helpers
 export function getCosmicBucketSlug(): string {
-  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
-  if (!bucketSlug) {
+  const slug = process.env.COSMIC_BUCKET_SLUG
+  if (!slug) {
     throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
   }
-  return bucketSlug
+  return slug
 }
 
 export function getCosmicReadKey(): string {
-  const readKey = process.env.COSMIC_READ_KEY
-  if (!readKey) {
+  const key = process.env.COSMIC_READ_KEY
+  if (!key) {
     throw new Error('COSMIC_READ_KEY environment variable is required')
   }
-  return readKey
+  return key
 }
 
 export function getCosmicWriteKey(): string {
-  const writeKey = process.env.COSMIC_WRITE_KEY
-  if (!writeKey) {
+  const key = process.env.COSMIC_WRITE_KEY
+  if (!key) {
     throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
-  return writeKey
+  return key
 }
 
-// Dashboard calculation utilities
-export function calculateCategoryBreakdown(transactions: any[]): any[] {
-  const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
-  
-  transactions.forEach(transaction => {
-    // Add proper undefined checks for transaction metadata
-    if (!transaction?.metadata) return
-    
+export function calculateCategoryBreakdown(expenses: Transaction[]): CategoryBreakdownItem[] {
+  if (!expenses || expenses.length === 0) {
+    return []
+  }
+
+  // Group expenses by category
+  const categoryTotals = expenses.reduce((acc, transaction) => {
     const categoryId = typeof transaction.metadata.category === 'object' 
       ? transaction.metadata.category?.id || 'unknown'
       : transaction.metadata.category || 'unknown'
@@ -73,64 +60,71 @@ export function calculateCategoryBreakdown(transactions: any[]): any[] {
     const categoryName = typeof transaction.metadata.category === 'object'
       ? transaction.metadata.category?.metadata?.name || 'Unknown'
       : 'Unknown'
-      
+    
     const categoryColor = typeof transaction.metadata.category === 'object'
       ? transaction.metadata.category?.metadata?.color || '#999999'
       : '#999999'
     
     const amount = Math.abs(transaction.metadata.amount || 0)
     
-    if (!categoryTotals[categoryId]) {
-      categoryTotals[categoryId] = {
+    if (!acc[categoryId]) {
+      acc[categoryId] = {
+        name: categoryName,
         amount: 0,
         color: categoryColor,
-        name: categoryName
+        percentage: 0
       }
     }
     
-    categoryTotals[categoryId].amount += amount
-  })
+    acc[categoryId].amount += amount
+    return acc
+  }, {} as Record<string, CategoryBreakdownItem>)
+
+  // Calculate total and percentages
+  const total = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
   
-  const totalExpenses = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
-  
-  return Object.entries(categoryTotals).map(([id, data]) => ({
-    name: data.name,
-    amount: data.amount,
-    color: data.color,
-    percentage: totalExpenses > 0 ? (data.amount / totalExpenses) * 100 : 0
+  return Object.values(categoryTotals).map(category => ({
+    ...category,
+    percentage: total > 0 ? (category.amount / total) * 100 : 0
   }))
 }
 
-export function calculateMonthlyData(transactions: any[]): any[] {
-  const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
-  
-  transactions.forEach(transaction => {
-    // Add proper undefined checks for transaction metadata
-    if (!transaction?.metadata) return
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
+
+  // Group transactions by month
+  const monthlyTotals = transactions.reduce((acc, transaction) => {
+    const date = new Date(transaction.metadata.date)
+    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
+    const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     
-    const date = new Date(transaction.metadata.date || transaction.created_at)
-    const monthKey = date.toISOString().substring(0, 7) // YYYY-MM format
-    
-    if (!monthlyTotals[monthKey]) {
-      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
+    if (!acc[monthKey]) {
+      acc[monthKey] = {
+        month: monthName,
+        income: 0,
+        expenses: 0,
+        net: 0
+      }
     }
     
-    const amount = Math.abs(transaction.metadata.amount || 0)
+    const amount = transaction.metadata.amount || 0
     
     if (transaction.metadata.type?.key === 'income') {
-      monthlyTotals[monthKey].income += amount
+      acc[monthKey].income += amount
     } else {
-      monthlyTotals[monthKey].expenses += amount
+      acc[monthKey].expenses += Math.abs(amount)
     }
-  })
-  
-  // Get last 12 months
-  const months = Object.keys(monthlyTotals).sort().slice(-12)
-  
-  return months.map(month => ({
-    month,
-    income: monthlyTotals[month]?.income || 0,
-    expenses: monthlyTotals[month]?.expenses || 0,
-    net: (monthlyTotals[month]?.income || 0) - (monthlyTotals[month]?.expenses || 0)
-  }))
+    
+    return acc
+  }, {} as Record<string, MonthlyDataItem>)
+
+  // Calculate net balance and sort by month
+  return Object.values(monthlyTotals)
+    .map(month => ({
+      ...month,
+      net: month.income - month.expenses
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month))
 }
