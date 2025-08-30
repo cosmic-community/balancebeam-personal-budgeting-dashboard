@@ -2,18 +2,18 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { User } from '@/types'
+import { User, Category, AuthUser } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import SettingsForm from '@/components/SettingsForm'
 import CategoryManager from '@/components/CategoryManager'
 
-async function getUserData(userId: string) {
+async function getSettingsData(userId: string) {
   try {
+    // Get user data
     const userResponse = await cosmic.objects.findOne({
       type: 'users',
       id: userId
     })
-    
     const user = userResponse.object as User
 
     // Get user's categories
@@ -23,11 +23,11 @@ async function getUserData(userId: string) {
         'metadata.user': userId 
       })
       .props(['id', 'title', 'slug', 'metadata'])
+      .depth(1)
 
-    return {
-      user,
-      categories: categoriesResponse.objects
-    }
+    const categories = categoriesResponse.objects as Category[]
+
+    return { user, categories }
   } catch (error) {
     if (hasStatus(error) && error.status === 404) {
       return { user: null, categories: [] }
@@ -55,33 +55,22 @@ export default async function SettingsPage() {
     redirect('/login')
   }
 
-  const data = await getUserData(payload.userId)
+  const data = await getSettingsData(payload.userId)
   
   if (!data.user) {
     redirect('/login')
   }
 
-  // Create a properly typed user object that matches the User interface
-  const userForLayout: User = {
+  // Convert User to AuthUser format to match component expectations
+  const authUser: AuthUser = {
     id: data.user.id,
-    slug: data.user.slug,
-    title: data.user.title,
-    type: data.user.type,
-    metadata: data.user.metadata,
-    created_at: data.user.created_at,
-    modified_at: data.user.modified_at,
-    status: data.user.status,
-    bucket: data.user.bucket,
-    published_at: data.user.published_at,
-    modified_by: data.user.modified_by,
-    created_by: data.user.created_by,
-    publish_at: data.user.publish_at,
-    thumbnail: data.user.thumbnail,
-    content: data.user.content
+    email: data.user.metadata.email,
+    full_name: data.user.metadata.full_name,
+    dark_mode: data.user.metadata.dark_mode ?? false
   }
 
   return (
-    <DashboardLayout user={userForLayout}>
+    <DashboardLayout user={data.user}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
         <div>
@@ -89,15 +78,17 @@ export default async function SettingsPage() {
             Settings
           </h1>
           <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Manage your account settings and preferences
+            Manage your account preferences and budget categories
           </p>
         </div>
 
-        {/* Settings Form */}
-        <SettingsForm user={userForLayout} />
-
-        {/* Category Manager */}
-        <CategoryManager categories={data.categories} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-grid-gap">
+          {/* User Settings */}
+          <SettingsForm user={authUser} />
+          
+          {/* Category Management */}
+          <CategoryManager categories={data.categories} />
+        </div>
       </div>
     </DashboardLayout>
   )
