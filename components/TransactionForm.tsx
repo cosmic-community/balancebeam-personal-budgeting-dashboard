@@ -13,7 +13,7 @@ export default function TransactionForm({ categories, onSuccess }: TransactionFo
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
-    category: categories.length > 0 ? categories[0].id : '',
+    category: categories.length > 0 && categories[0] ? categories[0].id : '',
     description: '',
     date: new Date().toISOString().split('T')[0]
   })
@@ -43,11 +43,11 @@ export default function TransactionForm({ categories, onSuccess }: TransactionFo
       })
 
       if (response.ok) {
-        // Reset form
+        // Reset form - safely handle empty categories array
         setFormData({
           type: 'expense',
           amount: 0,
-          category: categories.length > 0 ? categories[0].id : '',
+          category: categories.length > 0 && categories[0] ? categories[0].id : '',
           description: '',
           date: new Date().toISOString().split('T')[0]
         })
