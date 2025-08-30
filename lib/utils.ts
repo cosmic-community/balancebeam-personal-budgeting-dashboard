@@ -1,5 +1,5 @@
 import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwindcss-merge'
+import { twMerge } from 'tailwind-merge'
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem, getTransactionCategoryName, getTransactionCategoryColor } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
@@ -45,10 +45,11 @@ export function formatDateForInput(dateInput: string | Date): string {
   
   // Check if date is valid
   if (isNaN(date.getTime())) {
-    return new Date().toISOString().split('T')[0]
+    return new Date().toISOString().split('T')[0] || ''
   }
   
-  return date.toISOString().split('T')[0]
+  const isoString = date.toISOString().split('T')[0]
+  return isoString || ''
 }
 
 // Generate slug helper
