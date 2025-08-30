@@ -13,6 +13,30 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+export function formatDate(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  
+  if (isNaN(dateObj.getTime())) {
+    return 'Invalid Date'
+  }
+  
+  return dateObj.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+export function formatDateForInput(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  
+  if (isNaN(dateObj.getTime())) {
+    return new Date().toISOString().split('T')[0]
+  }
+  
+  return dateObj.toISOString().split('T')[0]
+}
+
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
