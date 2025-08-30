@@ -43,10 +43,11 @@ export async function PUT(
         value: type === 'income' ? 'Income' : 'Expense'
       }
     }
-    if (amount !== undefined) updateData['metadata.amount'] = Math.abs(amount)
+    if (amount !== undefined) updateData['metadata.amount'] = Number(amount)
     if (category) updateData['metadata.category'] = category
     if (description !== undefined) updateData['metadata.description'] = description
     if (date) updateData['metadata.date'] = date
+    if (description) updateData.title = description
 
     // Update transaction
     const updatedTransaction = await cosmic.objects.updateOne(id, updateData)

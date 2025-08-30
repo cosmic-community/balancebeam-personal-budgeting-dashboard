@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     // Validate input
     if (!type || !amount || !category || !date) {
       return NextResponse.json(
-        { error: 'Type, amount, category, and date are required' },
+        { error: 'All required fields must be provided' },
         { status: 400 }
       )
     }
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Create transaction
     const newTransaction = await cosmic.objects.insertOne({
       type: 'transactions',
-      title: description || `${type === 'income' ? 'Income' : 'Expense'} - ${new Date(date).toLocaleDateString()}`,
+      title: description || `${type} transaction`,
       slug: generateSlug(`${type}-${payload.userId}-${Date.now()}`),
       metadata: {
         user: payload.userId,
@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
           key: type,
           value: type === 'income' ? 'Income' : 'Expense'
         },
-        amount: Math.abs(amount), // Store as positive number
+        amount: Number(amount),
         category,
-        description: description || '',
+        description,
         date
       }
     })
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get transactions with related data
+    // Get transactions with category data
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',

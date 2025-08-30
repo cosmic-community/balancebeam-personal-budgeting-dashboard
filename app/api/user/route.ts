@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cosmic, hasStatus } from '@/lib/cosmic'
+import { cosmic } from '@/lib/cosmic'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
-import { User } from '@/types'
+import bcrypt from 'bcryptjs'
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,32 +25,24 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user data
-    try {
-      const userResponse = await cosmic.objects.findOne({
-        type: 'users',
-        id: payload.userId
-      })
+    const userResponse = await cosmic.objects.findOne({
+      type: 'users',
+      id: payload.userId
+    })
 
-      const user = userResponse.object as User
-
-      // Return user data (excluding password)
-      const userData = {
+    const user = userResponse.object
+    
+    // Return user data without password hash
+    const { password_hash, ...userWithoutPassword } = user.metadata
+    
+    return NextResponse.json({
+      user: {
         id: user.id,
         email: user.metadata.email,
         full_name: user.metadata.full_name,
         dark_mode: user.metadata.dark_mode || false
       }
-
-      return NextResponse.json({ user: userData })
-    } catch (error) {
-      if (hasStatus(error) && error.status === 404) {
-        return NextResponse.json(
-          { error: 'User not found' },
-          { status: 404 }
-        )
-      }
-      throw error
-    }
+    })
   } catch (error) {
     console.error('User fetch error:', error)
     return NextResponse.json(
@@ -82,32 +74,53 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { full_name, dark_mode } = body
+    const { full_name, email, dark_mode, current_password, new_password } = body
 
-    // Update user data (only allow safe fields)
+    // Build update object with only provided fields
     const updateData: any = {}
-    if (full_name !== undefined) updateData['metadata.full_name'] = full_name
-    if (dark_mode !== undefined) updateData['metadata.dark_mode'] = dark_mode
+    
+    if (full_name) updateData['metadata.full_name'] = full_name
+    if (email) updateData['metadata.email'] = email
+    if (typeof dark_mode === 'boolean') updateData['metadata.dark_mode'] = dark_mode
 
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json(
-        { error: 'No valid fields to update' },
-        { status: 400 }
-      )
+    // Handle password change
+    if (new_password && current_password) {
+      // Get current user data to verify password
+      const userResponse = await cosmic.objects.findOne({
+        type: 'users',
+        id: payload.userId
+      })
+
+      const user = userResponse.object
+      const passwordMatch = await bcrypt.compare(current_password, user.metadata.password_hash)
+      
+      if (!passwordMatch) {
+        return NextResponse.json(
+          { error: 'Current password is incorrect' },
+          { status: 400 }
+        )
+      }
+
+      // Hash new password
+      const saltRounds = 12
+      const hashedPassword = await bcrypt.hash(new_password, saltRounds)
+      updateData['metadata.password_hash'] = hashedPassword
     }
 
+    // Update user
     const updatedUser = await cosmic.objects.updateOne(payload.userId, updateData)
-    const user = updatedUser.object as User
-
-    // Return updated user data (excluding password)
-    const userData = {
-      id: user.id,
-      email: user.metadata.email,
-      full_name: user.metadata.full_name,
-      dark_mode: user.metadata.dark_mode || false
-    }
-
-    return NextResponse.json({ user: userData })
+    
+    // Return user data without password hash
+    const { password_hash, ...userWithoutPassword } = updatedUser.object.metadata
+    
+    return NextResponse.json({
+      user: {
+        id: updatedUser.object.id,
+        email: updatedUser.object.metadata.email,
+        full_name: updatedUser.object.metadata.full_name,
+        dark_mode: updatedUser.object.metadata.dark_mode || false
+      }
+    })
   } catch (error) {
     console.error('User update error:', error)
     return NextResponse.json(

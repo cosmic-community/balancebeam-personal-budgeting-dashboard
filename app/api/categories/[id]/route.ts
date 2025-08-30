@@ -23,7 +23,7 @@ export async function PUT(
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
         { error: 'Invalid token' },
@@ -79,7 +79,7 @@ export async function DELETE(
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
         { error: 'Invalid token' },
