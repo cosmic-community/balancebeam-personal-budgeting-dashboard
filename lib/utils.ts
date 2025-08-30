@@ -129,6 +129,15 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
   return Array.from(monthlyTotals.entries())
     .map(([monthKey, data]) => {
       const [year, month] = monthKey.split('-')
+      if (!year || !month) {
+        return {
+          month: 'Unknown',
+          income: data.income,
+          expenses: data.expenses,
+          net: data.income - data.expenses
+        }
+      }
+      
       const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
       
       return {
@@ -142,6 +151,8 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
       // Sort by year-month for chronological order
       const [aMonth, aYear] = a.month.split(' ')
       const [bMonth, bYear] = b.month.split(' ')
+      if (!aMonth || !aYear || !bMonth || !bYear) return 0
+      
       const aDate = new Date(`${aMonth} 1, ${aYear}`)
       const bDate = new Date(`${bMonth} 1, ${bYear}`)
       return aDate.getTime() - bDate.getTime()
