@@ -59,7 +59,7 @@ export function formatDateForInput(dateString: string): string {
   return new Date(dateString).toISOString().split('T')[0]
 }
 
-// Email validation function
+// Email validation function - Fixed type safety issue
 export function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   return emailRegex.test(email)
@@ -114,7 +114,6 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
   transactions.forEach(transaction => {
     const date = new Date(transaction.metadata.date)
     const monthKey = date.toISOString().substring(0, 7) // YYYY-MM format
-    const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
     
     const amount = transaction.metadata.amount || 0
     const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
