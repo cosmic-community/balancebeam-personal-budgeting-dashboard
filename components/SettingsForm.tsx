@@ -1,83 +1,93 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { User } from '@/types'
+import { useState } from 'react'
 import { isValidEmail } from '@/lib/utils'
+import { User } from '@/types'
 
 interface SettingsFormProps {
   user: User
 }
 
-export default function SettingsForm({ user: initialUser }: SettingsFormProps) {
-  const [user, setUser] = useState(initialUser)
-  const [formData, setFormData] = useState({
-    full_name: initialUser.metadata.full_name,
-    email: initialUser.metadata.email,
-    dark_mode: initialUser.metadata.dark_mode || false
-  })
+export default function SettingsForm({ user }: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [success, setSuccess] = useState('')
+  const [formData, setFormData] = useState({
+    full_name: user.metadata.full_name,
+    email: user.metadata.email,
+    dark_mode: user.metadata.dark_mode || false,
+    current_password: '',
+    new_password: '',
+    confirm_password: ''
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setErrors({})
-    setSuccess('')
-
-    // Validation
-    const newErrors: Record<string, string> = {}
     
-    if (!formData.full_name.trim()) {
-      newErrors.full_name = 'Full name is required'
-    }
-    
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required'
-    } else if (!isValidEmail(formData.email)) {
-      newErrors.email = 'Please enter a valid email'
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors)
-      setLoading(false)
+    // Validate email
+    if (!isValidEmail(formData.email)) {
+      alert('Please enter a valid email address')
       return
     }
 
+    // Validate passwords if changing password
+    if (formData.new_password) {
+      if (!formData.current_password) {
+        alert('Current password is required to set a new password')
+        return
+      }
+      if (formData.new_password !== formData.confirm_password) {
+        alert('New passwords do not match')
+        return
+      }
+      if (formData.new_password.length < 6) {
+        alert('New password must be at least 6 characters long')
+        return
+      }
+    }
+
+    setLoading(true)
+
     try {
       const token = localStorage.getItem('auth-token')
+      const updateData: any = {
+        full_name: formData.full_name,
+        email: formData.email,
+        dark_mode: formData.dark_mode
+      }
+
+      // Only include password fields if changing password
+      if (formData.new_password) {
+        updateData.current_password = formData.current_password
+        updateData.new_password = formData.new_password
+      }
+
       const response = await fetch('/api/user', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(updateData)
       })
 
-      const data = await response.json()
-
       if (response.ok) {
-        setSuccess('Settings updated successfully!')
-        // Update user state
-        setUser(prev => ({
+        alert('Settings updated successfully!')
+        // Clear password fields
+        setFormData(prev => ({
           ...prev,
-          metadata: {
-            ...prev.metadata,
-            ...formData
-          }
+          current_password: '',
+          new_password: '',
+          confirm_password: ''
         }))
-
-        // Apply theme change immediately
-        if (formData.dark_mode !== initialUser.metadata.dark_mode) {
-          document.documentElement.classList.toggle('dark', formData.dark_mode)
-        }
+        
+        // Reload page to reflect changes
+        window.location.reload()
       } else {
-        setErrors({ form: data.error || 'Update failed' })
+        const data = await response.json()
+        alert(data.error || 'Failed to update settings')
       }
     } catch (error) {
       console.error('Settings update error:', error)
-      setErrors({ form: 'An error occurred. Please try again.' })
+      alert('Failed to update settings. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -89,76 +99,110 @@ export default function SettingsForm({ user: initialUser }: SettingsFormProps) {
         <h3 className="card-title">Account Settings</h3>
         <p className="card-subtitle">Update your personal information and preferences</p>
       </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {errors.form && (
-          <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md text-sm">
-            {errors.form}
-          </div>
-        )}
-        
-        {success && (
-          <div className="bg-success/10 border border-success/20 text-success px-4 py-3 rounded-md text-sm">
-            {success}
-          </div>
-        )}
 
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Full Name */}
         <div>
-          <label htmlFor="full_name" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
             Full Name
           </label>
           <input
-            id="full_name"
             type="text"
             value={formData.full_name}
             onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-            className={`w-full px-4 py-3 bg-surface-light dark:bg-surface-dark border rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${
-              errors.full_name ? 'border-error' : 'border-border-light dark:border-border-dark'
-            }`}
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
             required
           />
-          {errors.full_name && (
-            <p className="mt-1 text-sm text-error">{errors.full_name}</p>
-          )}
         </div>
 
+        {/* Email */}
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-            Email
+          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+            Email Address
           </label>
           <input
-            id="email"
             type="email"
             value={formData.email}
             onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-            className={`w-full px-4 py-3 bg-surface-light dark:bg-surface-dark border rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${
-              errors.email ? 'border-error' : 'border-border-light dark:border-border-dark'
-            }`}
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
             required
           />
-          {errors.email && (
-            <p className="mt-1 text-sm text-error">{errors.email}</p>
-          )}
         </div>
 
-        <div>
-          <label className="flex items-center space-x-3">
+        {/* Dark Mode Toggle */}
+        <div className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg">
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+              Dark Mode
+            </label>
+            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
+              Toggle between light and dark theme
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
+              className="sr-only peer"
               checked={formData.dark_mode}
               onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
-              className="w-4 h-4 text-primary bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark rounded focus:ring-primary focus:ring-2"
             />
-            <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-              Enable dark mode
-            </span>
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-light/25 dark:peer-focus:ring-primary-dark/25 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-light dark:peer-checked:bg-primary-dark"></div>
           </label>
         </div>
 
+        {/* Password Change Section */}
+        <div className="border-t border-border-light dark:border-border-dark pt-4">
+          <h4 className="text-lg font-medium text-text-primary-light dark:text-text-primary-dark mb-4">
+            Change Password
+          </h4>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                Current Password
+              </label>
+              <input
+                type="password"
+                value={formData.current_password}
+                onChange={(e) => setFormData(prev => ({ ...prev, current_password: e.target.value }))}
+                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
+                placeholder="Enter current password to change"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                New Password
+              </label>
+              <input
+                type="password"
+                value={formData.new_password}
+                onChange={(e) => setFormData(prev => ({ ...prev, new_password: e.target.value }))}
+                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
+                placeholder="Enter new password (min 6 characters)"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                value={formData.confirm_password}
+                onChange={(e) => setFormData(prev => ({ ...prev, confirm_password: e.target.value }))}
+                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
+                placeholder="Confirm new password"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Submit Button */}
         <button
           type="submit"
           disabled={loading}
-          className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full btn-primary py-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? 'Updating...' : 'Update Settings'}
         </button>
