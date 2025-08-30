@@ -114,12 +114,25 @@ export default async function DashboardPage() {
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
-              Welcome back, {data.user.metadata.full_name}
+            <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
+              Hello, {data.user.metadata.full_name}
             </h1>
-            <p className="text-text-secondary-light dark:text-text-secondary-dark">
-              Here's your financial overview for today
+            <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
+              It's {new Date().toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
             </p>
+          </div>
+          <div className="flex gap-3">
+            <Link href="/dashboard/transactions" className="btn-secondary btn-small">
+              Add Transaction
+            </Link>
+            <Link href="/dashboard/transactions" className="btn-primary btn-small">
+              New Transaction
+            </Link>
           </div>
         </div>
 

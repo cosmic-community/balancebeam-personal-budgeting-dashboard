@@ -36,22 +36,22 @@ export default function Features() {
     <section className="py-20 px-4 bg-surface-light dark:bg-surface-dark">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-text-primary-light dark:text-text-primary-dark mb-4">
+          <h2 className="text-heading md:text-4xl font-bold text-text-primary-light dark:text-text-primary-dark mb-4">
             Everything You Need to Budget Better
           </h2>
-          <p className="text-xl text-text-secondary-light dark:text-text-secondary-dark max-w-2xl mx-auto">
+          <p className="text-body-lg text-text-secondary-light dark:text-text-secondary-dark max-w-2xl mx-auto">
             Powerful features designed to make personal finance management simple, intuitive, and effective.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-grid-gap">
           {features.map((feature, index) => (
-            <div key={index} className="card p-6">
+            <div key={index} className="card p-card-padding">
               <div className="text-4xl mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
+              <h3 className="text-subheading font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
                 {feature.title}
               </h3>
-              <p className="text-text-secondary-light dark:text-text-secondary-dark">
+              <p className="text-body text-text-secondary-light dark:text-text-secondary-dark">
                 {feature.description}
               </p>
             </div>

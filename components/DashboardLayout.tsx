@@ -31,12 +31,12 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
   return (
     <div className="min-h-screen bg-background-light dark:bg-background-dark">
       {/* Top Navigation */}
-      <nav className="bg-card-light dark:bg-card-dark border-b border-border-light dark:border-border-dark">
+      <nav className="bg-card-light dark:bg-card-dark border-b border-border-light dark:border-border-dark shadow-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
             <div className="flex items-center">
-              <Link href="/dashboard" className="text-2xl font-bold text-accent">
+              <Link href="/dashboard" className="text-2xl font-bold text-accent hover:text-accent-hover transition-colors">
                 BalanceBeam
               </Link>
             </div>
@@ -45,19 +45,19 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
             <div className="flex items-center space-x-4">
               <button
                 onClick={toggleDarkMode}
-                className="p-2 rounded-lg hover:bg-background-light dark:hover:bg-background-dark transition-colors"
+                className="p-2 rounded-card hover:bg-background-light dark:hover:bg-background-dark transition-colors"
                 aria-label="Toggle dark mode"
               >
-                {isDarkMode ? '☀️' : '🌙'}
+                <span className="text-xl">{isDarkMode ? '☀️' : '🌙'}</span>
               </button>
               
               <div className="flex items-center space-x-3">
-                <span className="text-text-secondary-light dark:text-text-secondary-dark">
+                <span className="text-body text-text-secondary-light dark:text-text-secondary-dark">
                   {user.metadata?.full_name || user.title}
                 </span>
                 <button
                   onClick={logout}
-                  className="text-text-secondary-light dark:text-text-secondary-dark hover:text-error transition-colors"
+                  className="text-body text-text-secondary-light dark:text-text-secondary-dark hover:text-error transition-colors px-3 py-1 rounded-card hover:bg-background-light dark:hover:bg-background-dark"
                 >
                   Logout
                 </button>
@@ -68,7 +68,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
+        <div className="flex flex-col lg:flex-row gap-grid-gap">
           {/* Sidebar Navigation */}
           <aside className="lg:w-64">
             <nav className="space-y-2">
