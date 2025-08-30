@@ -1,21 +1,20 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { JWTPayload } from '@/types'
+import { getJWTSecret } from './utils'
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production'
-)
+const secret = new TextEncoder().encode(getJWTSecret())
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('7d')
-    .sign(JWT_SECRET)
+    .setExpirationTime('24h')
+    .sign(secret)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
     console.error('JWT verification failed:', error)
@@ -24,28 +23,21 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
-  if (!authHeader) return null
-  
+  if (!authHeader) {
+    return null
+  }
+
+  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7)
   }
-  
-  // Handle cookie format: "auth-token=xyz; other-cookie=abc"
+
+  // Handle cookie format
   if (authHeader.includes('auth-token=')) {
-    const match = authHeader.match(/auth-token=([^;]+)/)
-    return match ? match[1] : null
+    const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
+    return tokenMatch ? tokenMatch[1] : null
   }
-  
-  return null
-}
 
-export async function hashPassword(password: string): Promise<string> {
-  const bcrypt = require('bcryptjs')
-  const saltRounds = 12
-  return await bcrypt.hash(password, saltRounds)
-}
-
-export async function comparePassword(password: string, hash: string): Promise<boolean> {
-  const bcrypt = require('bcryptjs')
-  return await bcrypt.compare(password, hash)
+  // Fix: Ensure we always return string | null, never undefined
+  return authHeader || null
 }
