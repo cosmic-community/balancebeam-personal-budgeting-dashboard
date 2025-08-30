@@ -1,92 +1,103 @@
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+export const generateSlug = (text: string): string => {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Remove multiple consecutive hyphens
+    .trim()
 }
 
-export function formatCurrency(amount: number): string {
+export const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD'
   }).format(amount)
 }
 
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
+export const formatDate = (dateString: string): string => {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
   })
 }
 
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w ]+/g, '')
-    .replace(/ +/g, '-')
+// Email validation function
+export const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
 }
 
-// Calculate category breakdown for pie chart
-export function calculateCategoryBreakdown(transactions: any[]): any[] {
-  const categoryTotals: { [key: string]: { amount: number; color: string; name: string } } = {}
+// Password validation function
+export const validatePassword = (password: string): boolean => {
+  // At least 8 characters, contains letters and numbers
+  return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password)
+}
+
+export const calculateCategoryBreakdown = (expenseTransactions: Transaction[]): CategoryBreakdownItem[] => {
+  if (!expenseTransactions || expenseTransactions.length === 0) return []
+
+  const categoryTotals = new Map<string, { name: string, amount: number, color: string }>()
   
-  transactions.forEach(transaction => {
+  expenseTransactions.forEach(transaction => {
+    // Safe access to category data
     const category = transaction.metadata.category
-    const categoryName = typeof category === 'object' && category?.metadata?.name 
-      ? category.metadata.name 
-      : 'Unknown Category'
-    const categoryColor = typeof category === 'object' && category?.metadata?.color 
-      ? category.metadata.color 
-      : '#999999'
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    
-    if (categoryTotals[categoryName]) {
-      categoryTotals[categoryName].amount += amount
-    } else {
-      categoryTotals[categoryName] = {
-        amount,
-        color: categoryColor,
-        name: categoryName
+    if (typeof category === 'object' && category?.metadata) {
+      const categoryName = category.metadata.name || 'Unknown Category'
+      const categoryColor = category.metadata.color || '#999999'
+      const amount = Math.abs(transaction.metadata.amount || 0)
+      
+      const existing = categoryTotals.get(categoryName)
+      if (existing) {
+        existing.amount += amount
+      } else {
+        categoryTotals.set(categoryName, {
+          name: categoryName,
+          amount,
+          color: categoryColor
+        })
       }
     }
   })
-  
-  const total = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
-  
-  return Object.values(categoryTotals).map(cat => ({
-    ...cat,
-    percentage: total > 0 ? Math.round((cat.amount / total) * 100) : 0
+
+  const totalExpenses = Array.from(categoryTotals.values())
+    .reduce((sum, item) => sum + item.amount, 0)
+
+  return Array.from(categoryTotals.values()).map(item => ({
+    ...item,
+    percentage: totalExpenses > 0 ? Math.round((item.amount / totalExpenses) * 100) : 0
   }))
 }
 
-// Calculate monthly data for cash flow chart
-export function calculateMonthlyData(transactions: any[]): any[] {
-  const monthlyTotals: { [key: string]: { income: number; expenses: number } } = {}
+export const calculateMonthlyData = (transactions: Transaction[]): MonthlyDataItem[] => {
+  if (!transactions || transactions.length === 0) return []
+
+  const monthlyTotals = new Map<string, { income: number, expenses: number }>()
   
   transactions.forEach(transaction => {
     const date = new Date(transaction.metadata.date)
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const monthKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
     const amount = transaction.metadata.amount || 0
     const type = transaction.metadata.type?.key
     
-    if (!monthlyTotals[monthKey]) {
-      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
-    }
+    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
     
     if (type === 'income') {
-      monthlyTotals[monthKey].income += amount
+      existing.income += amount
     } else if (type === 'expense') {
-      monthlyTotals[monthKey].expenses += Math.abs(amount)
+      existing.expenses += Math.abs(amount)
     }
+    
+    monthlyTotals.set(monthKey, existing)
   })
-  
-  return Object.entries(monthlyTotals)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, data]) => ({
-      month: new Date(month).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-      income: data.income,
-      expenses: data.expenses,
-      net: data.income - data.expenses
-    }))
+
+  return Array.from(monthlyTotals.entries()).map(([month, data]) => ({
+    month,
+    income: data.income,
+    expenses: data.expenses,
+    net: data.income - data.expenses
+  }))
 }
