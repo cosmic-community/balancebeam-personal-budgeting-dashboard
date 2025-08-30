@@ -1,46 +1,36 @@
+import bcrypt from 'bcryptjs'
 import { SignJWT, jwtVerify } from 'jose'
 import { JWTPayload } from '@/types'
 
-// Make JWT_SECRET access lazy to avoid build-time errors
-function getJWTSecret(): string {
-  const secret = process.env.JWT_SECRET
-  if (!secret) {
-    throw new Error('JWT_SECRET environment variable is required')
-  }
-  return secret
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-secret-key')
+
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 12)
 }
 
-function getSecretKey(): Uint8Array {
-  return new TextEncoder().encode(getJWTSecret())
+export async function comparePasswords(password: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword)
 }
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  try {
-    const secret = getSecretKey()
-    const jwt = await new SignJWT(payload)
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime('24h')
-      .sign(secret)
-    return jwt
-  } catch (error) {
-    console.error('JWT signing error:', error)
-    throw new Error('Failed to sign JWT token')
-  }
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('24h')
+    .sign(secret)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const secret = getSecretKey()
     const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
-    console.error('JWT verification error:', error)
+    console.error('JWT verification failed:', error)
     return null
   }
 }
 
-export function extractTokenFromHeader(authHeader: string | null): string | null {
+export function extractTokenFromHeader(authHeader: string | null | undefined): string | null {
   if (!authHeader) return null
   
   // Handle Bearer token format
@@ -50,9 +40,10 @@ export function extractTokenFromHeader(authHeader: string | null): string | null
   
   // Handle cookie format
   if (authHeader.includes('auth-token=')) {
-    const match = authHeader.match(/auth-token=([^;]+)/)
-    return match ? match[1] : null
+    const tokenMatch = authHeader.match(/auth-token=([^;]+)/)
+    return tokenMatch ? tokenMatch[1] : null
   }
   
-  return null
+  // Return the header as-is if it doesn't match known formats
+  return authHeader
 }
