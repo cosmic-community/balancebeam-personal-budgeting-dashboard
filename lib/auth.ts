@@ -4,10 +4,23 @@ import { JWTPayload } from '@/types'
 import { getJWTSecret } from '@/lib/utils'
 import bcrypt from 'bcryptjs'
 
-const secret = new TextEncoder().encode(getJWTSecret())
+function getJWTSecretSafe(): TextEncoder {
+  try {
+    const secret = getJWTSecret()
+    return new TextEncoder().encode(secret)
+  } catch (error) {
+    // During build time, if JWT_SECRET is not available, use a fallback
+    // This prevents build failures while ensuring runtime security
+    if (process.env.NODE_ENV !== 'production') {
+      return new TextEncoder().encode('build-time-fallback-secret-change-in-production')
+    }
+    throw error
+  }
+}
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
   try {
+    const secret = getJWTSecretSafe()
     const token = await new SignJWT(payload)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
@@ -23,6 +36,7 @@ export async function signJWT(payload: JWTPayload): Promise<string> {
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
+    const secret = getJWTSecretSafe()
     const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
