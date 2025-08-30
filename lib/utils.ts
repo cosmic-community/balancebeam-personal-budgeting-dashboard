@@ -63,17 +63,20 @@ export function getTransactionCategoryColor(transaction: Transaction): string {
   return '#999999'
 }
 
-// Fix TypeScript errors - provide default values for environment variables
+// Fix TypeScript errors - provide default values for environment variables with explicit string return type
 export function getCosmicBucketSlug(): string {
-  return process.env.COSMIC_BUCKET_SLUG ?? ''
+  const bucketSlug: string | undefined = process.env.COSMIC_BUCKET_SLUG
+  return bucketSlug ?? ''
 }
 
 export function getCosmicReadKey(): string {
-  return process.env.COSMIC_READ_KEY ?? ''
+  const readKey: string | undefined = process.env.COSMIC_READ_KEY
+  return readKey ?? ''
 }
 
 export function getCosmicWriteKey(): string {
-  return process.env.COSMIC_WRITE_KEY ?? ''
+  const writeKey: string | undefined = process.env.COSMIC_WRITE_KEY
+  return writeKey ?? ''
 }
 
 // Add missing calculateCategoryBreakdown function
