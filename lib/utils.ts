@@ -1,101 +1,93 @@
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
-export const generateSlug = (text: string): string => {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim()
-}
-
-export const formatCurrency = (amount: number): string => {
+export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD'
   }).format(amount)
 }
 
-export const formatDate = (dateString: string): string => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
+export function formatDate(date: Date | string): string {
+  return new Intl.DateTimeFormat('en-US', {
     month: 'short',
-    day: 'numeric'
-  })
+    day: 'numeric',
+    year: 'numeric'
+  }).format(new Date(date))
 }
 
-export const validateEmail = (email: string): boolean => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
+export function formatDateForInput(date: Date): string {
+  return date.toISOString().split('T')[0]
 }
 
-export const validatePassword = (password: string): boolean => {
-  return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password)
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '')
 }
 
-export const calculateCategoryBreakdown = (expenseTransactions: Transaction[]): CategoryBreakdownItem[] => {
-  if (!expenseTransactions || expenseTransactions.length === 0) return []
-
-  const categoryTotals = new Map<string, { name: string, amount: number, color: string }>()
+export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
+  if (!transactions || transactions.length === 0) return []
   
-  expenseTransactions.forEach(transaction => {
-    const category = transaction.metadata.category
-    if (typeof category === 'object' && category?.metadata) {
-      const categoryName = category.metadata.name || 'Unknown Category'
-      const categoryColor = category.metadata.color || '#999999'
-      const amount = Math.abs(transaction.metadata.amount || 0)
-      
-      const existing = categoryTotals.get(categoryName)
-      if (existing) {
-        existing.amount += amount
-      } else {
-        categoryTotals.set(categoryName, {
-          name: categoryName,
-          amount,
-          color: categoryColor
-        })
+  const categoryTotals: { [key: string]: { amount: number; color: string; name: string } } = {}
+  let totalAmount = 0
+
+  transactions.forEach(transaction => {
+    const amount = Math.abs(transaction.metadata.amount || 0)
+    totalAmount += amount
+    
+    const categoryName = typeof transaction.metadata.category === 'object' 
+      ? transaction.metadata.category?.metadata?.name || 'Unknown'
+      : 'Unknown'
+    const categoryColor = typeof transaction.metadata.category === 'object'
+      ? transaction.metadata.category?.metadata?.color || '#999999'
+      : '#999999'
+
+    if (!categoryTotals[categoryName]) {
+      categoryTotals[categoryName] = {
+        amount: 0,
+        color: categoryColor,
+        name: categoryName
       }
     }
+    categoryTotals[categoryName].amount += amount
   })
 
-  const totalExpenses = Array.from(categoryTotals.values())
-    .reduce((sum, item) => sum + item.amount, 0)
-
-  return Array.from(categoryTotals.values()).map(item => ({
-    ...item,
-    percentage: totalExpenses > 0 ? Math.round((item.amount / totalExpenses) * 100) : 0
-  }))
+  return Object.values(categoryTotals)
+    .map(item => ({
+      ...item,
+      percentage: totalAmount > 0 ? Math.round((item.amount / totalAmount) * 100) : 0
+    }))
+    .sort((a, b) => b.amount - a.amount)
 }
 
-export const calculateMonthlyData = (transactions: Transaction[]): MonthlyDataItem[] => {
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
   if (!transactions || transactions.length === 0) return []
-
-  const monthlyTotals = new Map<string, { income: number, expenses: number }>()
   
+  const monthlyTotals: { [key: string]: { income: number; expenses: number } } = {}
+
   transactions.forEach(transaction => {
     const date = new Date(transaction.metadata.date)
-    const monthKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-    const amount = transaction.metadata.amount || 0
-    const type = transaction.metadata.type?.key
+    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
+    const amount = Math.abs(transaction.metadata.amount || 0)
     
-    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
-    
-    if (type === 'income') {
-      existing.income += amount
-    } else if (type === 'expense') {
-      existing.expenses += Math.abs(amount)
+    if (!monthlyTotals[monthKey]) {
+      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
     }
-    
-    monthlyTotals.set(monthKey, existing)
+
+    if (transaction.metadata.type?.key === 'income') {
+      monthlyTotals[monthKey].income += amount
+    } else {
+      monthlyTotals[monthKey].expenses += amount
+    }
   })
 
-  return Array.from(monthlyTotals.entries())
+  return Object.entries(monthlyTotals)
     .map(([month, data]) => ({
       month,
       income: data.income,
       expenses: data.expenses,
       net: data.income - data.expenses
     }))
-    .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+    .sort((a, b) => a.month.localeCompare(b.month))
 }

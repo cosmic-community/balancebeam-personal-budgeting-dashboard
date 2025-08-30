@@ -5,23 +5,26 @@ import { Category, TransactionFormData } from '@/types'
 import { formatDateForInput } from '@/lib/utils'
 
 interface TransactionFormProps {
+  categories?: Category[]
   onSuccess?: () => void
 }
 
-export default function TransactionForm({ onSuccess }: TransactionFormProps) {
-  const [categories, setCategories] = useState<Category[]>([])
+export default function TransactionForm({ categories: initialCategories, onSuccess }: TransactionFormProps) {
+  const [categories, setCategories] = useState<Category[]>(initialCategories || [])
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
-    category: '', // This line was causing TS2322 error - ensure it's always a string
+    category: '',
     description: '',
     date: formatDateForInput(new Date())
   })
 
   useEffect(() => {
-    fetchCategories()
-  }, [])
+    if (!initialCategories) {
+      fetchCategories()
+    }
+  }, [initialCategories])
 
   const fetchCategories = async () => {
     try {
@@ -42,7 +45,7 @@ export default function TransactionForm({ onSuccess }: TransactionFormProps) {
         if (data.categories && data.categories.length > 0 && !formData.category) {
           setFormData(prev => ({ 
             ...prev, 
-            category: data.categories[0]?.id || '' // Fix TS2322 error by ensuring string fallback
+            category: data.categories[0]?.id || ''
           }))
         }
       }
@@ -86,7 +89,7 @@ export default function TransactionForm({ onSuccess }: TransactionFormProps) {
         setFormData({
           type: 'expense',
           amount: 0,
-          category: categories[0]?.id || '', // Ensure category is always string
+          category: categories[0]?.id || '',
           description: '',
           date: formatDateForInput(new Date())
         })
