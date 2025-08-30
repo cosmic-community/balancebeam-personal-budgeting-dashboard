@@ -1,79 +1,54 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Category, TransactionFormData } from '@/types'
 import { formatDateForInput } from '@/lib/utils'
+import { Category, TransactionFormData } from '@/types'
 
 interface TransactionFormProps {
-  categories?: Category[]
+  categories: Category[]
   onSuccess?: () => void
+  editTransaction?: any
 }
 
-export default function TransactionForm({ categories: initialCategories, onSuccess }: TransactionFormProps) {
-  const [categories, setCategories] = useState<Category[]>(initialCategories || [])
+export default function TransactionForm({ categories, onSuccess, editTransaction }: TransactionFormProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TransactionFormData>({
     type: 'expense',
     amount: 0,
     category: '',
     description: '',
-    date: formatDateForInput(new Date().toISOString())
+    date: formatDateForInput(new Date())
   })
 
+  // Load edit data if provided
   useEffect(() => {
-    if (!initialCategories) {
-      fetchCategories()
-    }
-  }, [initialCategories])
-
-  const fetchCategories = async () => {
-    try {
-      const token = localStorage.getItem('auth-token')
-      if (!token) return
-
-      const response = await fetch('/api/categories', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+    if (editTransaction) {
+      setFormData({
+        type: editTransaction.metadata.type?.key || 'expense',
+        amount: Math.abs(editTransaction.metadata.amount || 0),
+        category: typeof editTransaction.metadata.category === 'object' 
+          ? editTransaction.metadata.category.id 
+          : editTransaction.metadata.category || '',
+        description: editTransaction.metadata.description || '',
+        date: formatDateForInput(editTransaction.metadata.date || new Date())
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setCategories(data.categories || [])
-        
-        // Set default category if available and none selected
-        if (data.categories && data.categories.length > 0 && !formData.category) {
-          setFormData(prev => ({ 
-            ...prev, 
-            category: data.categories[0]?.id || ''
-          }))
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch categories:', error)
     }
-  }
+  }, [editTransaction])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    // Validate required fields
-    if (!formData.category) {
-      alert('Please select a category')
-      return
-    }
-
     setLoading(true)
 
     try {
       const token = localStorage.getItem('auth-token')
-      if (!token) {
-        alert('Please log in to create transactions')
-        return
-      }
+      const url = editTransaction 
+        ? `/api/transactions/${editTransaction.id}`
+        : '/api/transactions'
+      
+      const method = editTransaction ? 'PUT' : 'POST'
 
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -85,103 +60,84 @@ export default function TransactionForm({ categories: initialCategories, onSucce
       })
 
       if (response.ok) {
-        // Reset form
-        setFormData({
-          type: 'expense',
-          amount: 0,
-          category: categories[0]?.id || '',
-          description: '',
-          date: formatDateForInput(new Date().toISOString())
-        })
+        // Reset form for new transactions
+        if (!editTransaction) {
+          setFormData({
+            type: 'expense',
+            amount: 0,
+            category: '',
+            description: '',
+            date: formatDateForInput(new Date())
+          })
+        }
         
-        if (onSuccess) onSuccess()
-        alert('Transaction created successfully!')
+        onSuccess?.()
       } else {
-        const data = await response.json()
-        alert(data.error || 'Failed to create transaction')
+        const errorData = await response.json()
+        throw new Error(errorData.error || `Failed to ${editTransaction ? 'update' : 'create'} transaction`)
       }
     } catch (error) {
-      console.error('Transaction creation error:', error)
-      alert('Failed to create transaction. Please try again.')
+      console.error('Transaction error:', error)
+      alert(`Failed to ${editTransaction ? 'update' : 'create'} transaction. Please try again.`)
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredCategories = categories.filter(cat => 
-    cat.metadata.type?.key === formData.type
-  )
+  const expenseCategories = categories.filter(cat => cat.metadata.type?.key === 'expense')
+  const incomeCategories = categories.filter(cat => cat.metadata.type?.key === 'income')
+  const availableCategories = formData.type === 'income' ? incomeCategories : expenseCategories
 
   return (
     <div className="card">
       <div className="card-header">
-        <h3 className="card-title">Add Transaction</h3>
-        <p className="card-subtitle">Record a new income or expense</p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Transaction Type */}
         <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-            Type
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setFormData(prev => ({ 
-                ...prev, 
-                type: 'income',
-                category: categories.find(c => c.metadata.type?.key === 'income')?.id || ''
-              }))}
-              className={`p-3 rounded-lg border text-sm font-medium transition-colors ${
-                formData.type === 'income'
-                  ? 'bg-success text-white border-success'
-                  : 'bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark text-text-primary-light dark:text-text-primary-dark hover:border-success'
-              }`}
-            >
-              Income
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormData(prev => ({ 
-                ...prev, 
-                type: 'expense',
-                category: categories.find(c => c.metadata.type?.key === 'expense')?.id || ''
-              }))}
-              className={`p-3 rounded-lg border text-sm font-medium transition-colors ${
-                formData.type === 'expense'
-                  ? 'bg-error text-white border-error'
-                  : 'bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark text-text-primary-light dark:text-text-primary-dark hover:border-error'
-              }`}
-            >
-              Expense
-            </button>
-          </div>
+          <h3 className="card-title">
+            {editTransaction ? 'Edit Transaction' : 'Add New Transaction'}
+          </h3>
+          <p className="card-subtitle">
+            {editTransaction ? 'Update transaction details' : 'Enter your transaction information'}
+          </p>
         </div>
+      </div>
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Type
+            </label>
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData(prev => ({ 
+                ...prev, 
+                type: e.target.value as 'income' | 'expense',
+                category: '' // Reset category when type changes
+              }))}
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
+              required
+            >
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+          </div>
 
-        {/* Amount */}
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-            Amount
-          </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary-light dark:text-text-secondary-dark">
-              $
-            </span>
+          <div>
+            <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              Amount
+            </label>
             <input
               type="number"
               step="0.01"
               min="0"
               value={formData.amount || ''}
               onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
-              className="w-full pl-8 pr-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-              placeholder="0.00"
+              className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
               required
             />
           </div>
         </div>
 
-        {/* Category */}
         <div>
           <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
             Category
@@ -189,38 +145,23 @@ export default function TransactionForm({ categories: initialCategories, onSucce
           <select
             value={formData.category}
             onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
             required
           >
             <option value="">Select a category</option>
-            {filteredCategories.map((category) => (
+            {availableCategories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.metadata.name}
               </option>
             ))}
           </select>
-          {filteredCategories.length === 0 && (
+          {availableCategories.length === 0 && (
             <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mt-1">
-              No {formData.type} categories available. Create one first.
+              No {formData.type} categories available. Create one first in Settings.
             </p>
           )}
         </div>
 
-        {/* Description */}
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-            Description (Optional)
-          </label>
-          <input
-            type="text"
-            value={formData.description || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
-            placeholder="Enter description"
-          />
-        </div>
-
-        {/* Date */}
         <div>
           <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
             Date
@@ -229,19 +170,42 @@ export default function TransactionForm({ categories: initialCategories, onSucce
             type="date"
             value={formData.date}
             onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:border-transparent"
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md"
             required
           />
         </div>
 
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={loading || filteredCategories.length === 0}
-          className="w-full btn-primary py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Creating...' : `Add ${formData.type === 'income' ? 'Income' : 'Expense'}`}
-        </button>
+        <div>
+          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+            Description (optional)
+          </label>
+          <textarea
+            value={formData.description}
+            onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+            rows={3}
+            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md resize-none"
+            placeholder="Enter transaction description..."
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={loading || !formData.category}
+            className="flex-1 btn-primary"
+          >
+            {loading ? 'Processing...' : (editTransaction ? 'Update Transaction' : 'Add Transaction')}
+          </button>
+          {editTransaction && (
+            <button
+              type="button"
+              onClick={() => onSuccess?.()}
+              className="px-6 btn-secondary"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
     </div>
   )

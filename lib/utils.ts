@@ -1,4 +1,4 @@
-import { type ClassValue, clsx } from 'clsx'
+import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
@@ -6,150 +6,150 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Environment variable helpers with proper type safety
+// Environment variable getters with fallbacks
 export function getCosmicBucketSlug(): string {
-  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
-  if (!bucketSlug) {
+  const slug = process.env.COSMIC_BUCKET_SLUG
+  if (!slug) {
     throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
   }
-  return bucketSlug
+  return slug
 }
 
 export function getCosmicReadKey(): string {
-  const readKey = process.env.COSMIC_READ_KEY
-  if (!readKey) {
+  const key = process.env.COSMIC_READ_KEY
+  if (!key) {
     throw new Error('COSMIC_READ_KEY environment variable is required')
   }
-  return readKey
+  return key
 }
 
 export function getCosmicWriteKey(): string {
-  const writeKey = process.env.COSMIC_WRITE_KEY
-  if (!writeKey) {
+  const key = process.env.COSMIC_WRITE_KEY
+  if (!key) {
     throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
-  return writeKey
+  return key
 }
 
-// Currency formatting
+// Utility functions
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'USD'
   }).format(amount)
 }
 
-// Date formatting
 export function formatDate(date: string): string {
   return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
-    day: 'numeric',
+    day: 'numeric'
   })
 }
 
-// Generate URL-safe slug
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/[\s_-]+/g, '-') // Replace spaces and underscores with hyphens
-    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+// NEW: Format date for HTML input field
+export function formatDateForInput(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toISOString().split('T')[0]
 }
 
-// Calculate category breakdown for pie chart
 export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
-  if (!transactions || transactions.length === 0) return []
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
 
-  const categoryTotals: Record<string, { amount: number; color: string }> = {}
+  const categoryTotals = new Map<string, { amount: number; color: string; name: string }>()
   
   transactions.forEach(transaction => {
+    const category = transaction.metadata.category
     const amount = Math.abs(transaction.metadata.amount || 0)
     
-    let categoryName = 'Unknown Category'
+    // Handle both populated and unpopulated category references
+    let categoryName = 'Unknown'
     let categoryColor = '#999999'
     
-    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
-      categoryName = transaction.metadata.category.metadata.name || 'Unknown Category'
-      categoryColor = transaction.metadata.category.metadata.color || '#999999'
+    if (typeof category === 'object' && category !== null) {
+      categoryName = category.metadata?.name || category.title || 'Unknown'
+      categoryColor = category.metadata?.color || '#999999'
+    } else if (typeof category === 'string') {
+      categoryName = 'Unknown Category'
     }
     
-    if (!categoryTotals[categoryName]) {
-      categoryTotals[categoryName] = { amount: 0, color: categoryColor }
+    const existing = categoryTotals.get(categoryName)
+    if (existing) {
+      existing.amount += amount
+    } else {
+      categoryTotals.set(categoryName, {
+        amount,
+        color: categoryColor,
+        name: categoryName
+      })
     }
-    categoryTotals[categoryName].amount += amount
   })
 
-  const total = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
+  const total = Array.from(categoryTotals.values()).reduce((sum, cat) => sum + cat.amount, 0)
   
-  if (total === 0) return []
-
-  return Object.entries(categoryTotals).map(([name, data]) => ({
-    name,
-    amount: data.amount,
-    color: data.color,
-    percentage: Math.round((data.amount / total) * 100)
-  }))
+  // FIXED: Handle potential undefined values with proper checks
+  return Array.from(categoryTotals.entries()).map(([name, data]) => {
+    // Ensure data exists and has required properties
+    if (!data) {
+      return {
+        name: name || 'Unknown',
+        amount: 0,
+        color: '#999999',
+        percentage: 0
+      }
+    }
+    
+    return {
+      name: data.name || name || 'Unknown',
+      amount: data.amount || 0,
+      color: data.color || '#999999',
+      percentage: total > 0 ? Math.round((data.amount / total) * 100) : 0
+    }
+  }).sort((a, b) => b.amount - a.amount)
 }
 
-// Calculate monthly data for cash flow chart
 export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  if (!transactions || transactions.length === 0) return []
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
 
-  const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
+  const monthlyTotals = new Map<string, { income: number; expenses: number }>()
   
   transactions.forEach(transaction => {
     const date = new Date(transaction.metadata.date)
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     const amount = Math.abs(transaction.metadata.amount || 0)
+    const type = transaction.metadata.type?.key
     
-    if (!monthlyTotals[monthKey]) {
-      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
+    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
+    
+    if (type === 'income') {
+      existing.income += amount
+    } else if (type === 'expense') {
+      existing.expenses += amount
     }
     
-    if (transaction.metadata.type?.key === 'income') {
-      monthlyTotals[monthKey].income += amount
-    } else {
-      monthlyTotals[monthKey].expenses += amount
-    }
+    monthlyTotals.set(monthKey, existing)
   })
 
-  return Object.entries(monthlyTotals)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, data]) => ({
-      month: new Date(`${month}-01`).toLocaleDateString('en-US', { 
+  return Array.from(monthlyTotals.entries())
+    .map(([monthKey, totals]) => ({
+      month: new Date(monthKey + '-01').toLocaleDateString('en-US', { 
         month: 'short', 
         year: 'numeric' 
       }),
-      income: data.income,
-      expenses: data.expenses,
-      net: data.income - data.expenses
+      income: totals.income,
+      expenses: totals.expenses,
+      net: totals.income - totals.expenses
     }))
-}
-
-// Validate email format
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-// Password strength validation
-export function validatePassword(password: string): { isValid: boolean; message?: string } {
-  if (password.length < 8) {
-    return { isValid: false, message: 'Password must be at least 8 characters long' }
-  }
-  
-  if (!/(?=.*[a-z])/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one lowercase letter' }
-  }
-  
-  if (!/(?=.*[A-Z])/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one uppercase letter' }
-  }
-  
-  if (!/(?=.*\d)/.test(password)) {
-    return { isValid: false, message: 'Password must contain at least one number' }
-  }
-  
-  return { isValid: true }
+    .sort((a, b) => a.month.localeCompare(b.month))
 }
