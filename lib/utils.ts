@@ -35,6 +35,11 @@ export function generateSlug(text: string): string {
     .trim()
 }
 
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
 export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
   const categoryTotals = new Map<string, { amount: number; color: string; name: string }>()
   
