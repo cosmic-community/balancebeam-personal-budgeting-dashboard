@@ -40,6 +40,12 @@ export function formatDate(dateString: string): string {
   }).format(date)
 }
 
+// Date formatting for HTML input fields (YYYY-MM-DD format)
+export function formatDateForInput(dateString: string): string {
+  const date = new Date(dateString)
+  return date.toISOString().split('T')[0]
+}
+
 // Currency formatting utility
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
