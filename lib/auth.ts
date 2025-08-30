@@ -43,8 +43,11 @@ export async function comparePasswords(password: string, hashedPassword: string)
   return await bcrypt.compare(password, hashedPassword)
 }
 
-export function getJWTSecret(): string | null {
-  // Fixed: Handle undefined by converting to null
+// Fixed: Properly handle undefined environment variable
+export function getJWTSecret(): string {
   const secret = process.env.JWT_SECRET
-  return secret !== undefined ? secret : null
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required')
+  }
+  return secret
 }
