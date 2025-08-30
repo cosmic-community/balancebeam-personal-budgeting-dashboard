@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { verifyJWT, extractTokenFromHeader, comparePasswords, hashPassword } from '@/lib/auth'
-import { User } from '@/types'
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
+    // Extract token from Authorization header
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -16,6 +15,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Verify JWT token
     const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
@@ -24,33 +24,42 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get user data
-    const userResponse = await cosmic.objects.findOne({
-      type: 'users',
-      id: payload.userId
-    })
+    // Get user from Cosmic
+    try {
+      const { object: user } = await cosmic.objects
+        .findOne({ 
+          type: 'users', 
+          id: payload.userId 
+        })
+        .props(['id', 'title', 'metadata'])
 
-    const user = userResponse.object as User
-
-    // Return user data without password hash
-    const { password_hash, ...userWithoutPassword } = user.metadata
-    
-    return NextResponse.json({
-      user: {
-        ...user,
-        metadata: userWithoutPassword
+      if (!user) {
+        return NextResponse.json(
+          { error: 'User not found' },
+          { status: 404 }
+        )
       }
-    })
+
+      // Return user data (excluding sensitive information)
+      return NextResponse.json({
+        user: {
+          id: user.id,
+          email: user.metadata.email,
+          full_name: user.metadata.full_name,
+          dark_mode: user.metadata.dark_mode ?? false
+        }
+      })
+    } catch (error) {
+      if (hasStatus(error) && error.status === 404) {
+        return NextResponse.json(
+          { error: 'User not found' },
+          { status: 404 }
+        )
+      }
+      throw error
+    }
   } catch (error) {
     console.error('User fetch error:', error)
-    
-    if (hasStatus(error) && error.status === 404) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      )
-    }
-
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -60,7 +69,7 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    // Verify authentication
+    // Extract token from Authorization header
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -71,6 +80,7 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // Verify JWT token
     const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
@@ -79,78 +89,34 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // Get update data from request body
     const body = await request.json()
-    const { full_name, email, current_password, new_password, dark_mode } = body
+    const { full_name, dark_mode } = body
 
-    // Get current user data
-    const userResponse = await cosmic.objects.findOne({
-      type: 'users',
-      id: payload.userId
-    })
-
-    const user = userResponse.object as User
-
-    // Build update object
+    // Build update object with only provided fields
     const updateData: any = {}
-
-    if (full_name) {
+    
+    if (full_name !== undefined) {
       updateData.title = full_name
       updateData['metadata.full_name'] = full_name
     }
-
-    if (email && email !== user.metadata.email) {
-      // Check if email is already taken
-      try {
-        await cosmic.objects.findOne({
-          type: 'users',
-          'metadata.email': email
-        })
-        return NextResponse.json(
-          { error: 'Email already exists' },
-          { status: 400 }
-        )
-      } catch (error) {
-        if (hasStatus(error) && error.status === 404) {
-          // Email not taken, safe to update
-          updateData['metadata.email'] = email
-        } else {
-          throw error
-        }
-      }
+    
+    if (dark_mode !== undefined) {
+      updateData['metadata.dark_mode'] = Boolean(dark_mode)
     }
 
-    if (typeof dark_mode === 'boolean') {
-      updateData['metadata.dark_mode'] = dark_mode
-    }
-
-    // Handle password change
-    if (current_password && new_password) {
-      // Verify current password
-      const isCurrentPasswordValid = await comparePasswords(current_password, user.metadata.password_hash)
-      
-      if (!isCurrentPasswordValid) {
-        return NextResponse.json(
-          { error: 'Current password is incorrect' },
-          { status: 400 }
-        )
-      }
-
-      // Hash new password
-      const hashedNewPassword = await hashPassword(new_password)
-      updateData['metadata.password_hash'] = hashedNewPassword
-    }
-
-    // Update user
-    const updatedUserResponse = await cosmic.objects.updateOne(payload.userId, updateData)
-    const updatedUser = updatedUserResponse.object as User
-
-    // Return updated user data without password hash
-    const { password_hash, ...userWithoutPassword } = updatedUser.metadata
+    // Update user in Cosmic
+    const { object: updatedUser } = await cosmic.objects.updateOne(
+      payload.userId,
+      updateData
+    )
 
     return NextResponse.json({
       user: {
-        ...updatedUser,
-        metadata: userWithoutPassword
+        id: updatedUser.id,
+        email: updatedUser.metadata.email,
+        full_name: updatedUser.metadata.full_name,
+        dark_mode: updatedUser.metadata.dark_mode ?? false
       }
     })
   } catch (error) {
