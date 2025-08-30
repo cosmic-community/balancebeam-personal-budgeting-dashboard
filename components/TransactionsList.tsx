@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Transaction, Category, TransactionFormData } from '@/types'
+import { Transaction, Category, TransactionFormData, getTransactionCategoryName, getTransactionCategoryColor } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface TransactionsListProps {
@@ -10,11 +10,7 @@ interface TransactionsListProps {
   userId: string
 }
 
-export default function TransactionsList({ 
-  transactions: initialTransactions, 
-  categories, 
-  userId 
-}: TransactionsListProps) {
+export default function TransactionsList({ transactions: initialTransactions, categories, userId }: TransactionsListProps) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -25,20 +21,6 @@ export default function TransactionsList({
     description: '',
     date: new Date().toISOString().split('T')[0]
   })
-
-  // Safe function to get category name with proper type checking
-  const getCategoryName = (transaction: Transaction): string => {
-    const category = transaction.metadata.category
-    if (typeof category === 'object' && category?.metadata?.name) {
-      return category.metadata.name
-    }
-    return 'Unknown Category'
-  }
-
-  // Safe function to get transaction description with proper type checking
-  const getTransactionDescription = (transaction: Transaction): string => {
-    return transaction.metadata.description || 'No description'
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -100,13 +82,16 @@ export default function TransactionsList({
     }
   }
 
+  // Filter categories by type
+  const availableCategories = categories.filter(cat => cat.metadata.type?.key === formData.type)
+
   return (
     <div className="card">
       <div className="card-header">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="card-title">Transactions</h3>
-            <p className="card-subtitle">Your financial activity</p>
+            <h3 className="card-title">All Transactions</h3>
+            <p className="card-subtitle">Track your income and expenses</p>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
@@ -118,17 +103,19 @@ export default function TransactionsList({
       </div>
       
       {showForm && (
-        <div className="border-b border-border-light dark:border-border-dark pb-4 mb-4">
+        <div className="border-b border-border-light dark:border-border-dark pb-4 mb-4 px-6">
           <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                  Type
-                </label>
+                <label className="form-label">Type</label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'income' | 'expense' }))}
-                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    type: e.target.value as 'income' | 'expense',
+                    category: '' // Reset category when type changes
+                  }))}
+                  className="form-input"
                 >
                   <option value="expense">Expense</option>
                   <option value="income">Income</option>
@@ -136,64 +123,57 @@ export default function TransactionsList({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                  Amount
-                </label>
+                <label className="form-label">Amount</label>
                 <input
                   type="number"
                   step="0.01"
-                  value={formData.amount}
+                  min="0"
+                  value={formData.amount || ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
+                  className="form-input"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="form-label">Category</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                  className="form-input"
+                  required
+                >
+                  <option value="">Select a category</option>
+                  {availableCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.metadata.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="form-label">Date</label>
+                <input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                  className="form-input"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                Category
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
-                required
-              >
-                <option value="">Select a category</option>
-                {categories
-                  .filter(cat => cat.metadata.type?.key === formData.type)
-                  .map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.metadata.name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                Description
-              </label>
+              <label className="form-label">Description (Optional)</label>
               <input
                 type="text"
                 value={formData.description}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
-                placeholder="Optional description"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-                Date
-              </label>
-              <input
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-sm"
-                required
+                className="form-input"
+                placeholder="Enter a description"
               />
             </div>
 
@@ -202,63 +182,63 @@ export default function TransactionsList({
               disabled={loading}
               className="w-full btn-primary text-sm py-2"
             >
-              {loading ? 'Adding...' : 'Add Transaction'}
+              {loading ? 'Creating...' : 'Create Transaction'}
             </button>
           </form>
         </div>
       )}
       
-      <div className="space-y-3">
+      <div className="p-6 pt-0">
         {transactions.length === 0 ? (
-          <p className="text-text-secondary-light dark:text-text-secondary-dark text-center py-4">
-            No transactions yet. Add your first transaction above.
+          <p className="text-text-secondary-light dark:text-text-secondary-dark text-center py-8">
+            No transactions yet. Create your first transaction above.
           </p>
         ) : (
-          transactions.map((transaction) => (
-            <div 
-              key={transaction.id} 
-              className="flex items-center justify-between p-3 bg-surface-light dark:bg-surface-dark rounded-lg"
-            >
-              <div className="flex items-center space-x-3">
-                <div className="flex flex-col">
-                  <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
-                    {transaction.title}
-                  </p>
-                  <div className="flex items-center space-x-2 text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                    <span>{getCategoryName(transaction)}</span>
-                    <span>•</span>
-                    <span>{formatDate(transaction.metadata.date)}</span>
-                  </div>
-                  {transaction.metadata.description && (
-                    <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1">
-                      {getTransactionDescription(transaction)}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="text-right">
-                  <p className={`font-medium ${
-                    transaction.metadata.type?.key === 'income' 
-                      ? 'text-success' 
-                      : 'text-error'
-                  }`}>
-                    {transaction.metadata.type?.key === 'income' ? '+' : '-'}
-                    {formatCurrency(Math.abs(transaction.metadata.amount || 0))}
-                  </p>
-                  <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark">
-                    {transaction.metadata.type?.value || 'Unknown'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDelete(transaction.id)}
-                  className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
+          <div className="space-y-3">
+            {transactions
+              .sort((a, b) => new Date(b.metadata.date).getTime() - new Date(a.metadata.date).getTime())
+              .map((transaction) => (
+                <div 
+                  key={transaction.id} 
+                  className="flex items-center justify-between p-4 bg-surface-light dark:bg-surface-dark rounded-lg"
                 >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
+                  <div className="flex items-center space-x-4">
+                    <div 
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: getTransactionCategoryColor(transaction) }}
+                    />
+                    <div>
+                      <p className="font-medium text-text-primary-light dark:text-text-primary-dark">
+                        {transaction.title}
+                      </p>
+                      <div className="flex items-center space-x-2 text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                        <span>{getTransactionCategoryName(transaction)}</span>
+                        <span>•</span>
+                        <span>{formatDate(transaction.metadata.date)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <p className={`font-semibold ${
+                        transaction.metadata.type?.key === 'income' ? 'text-income' : 'text-expense'
+                      }`}>
+                        {transaction.metadata.type?.key === 'income' ? '+' : '-'}
+                        {formatCurrency(Math.abs(transaction.metadata.amount))}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="text-error hover:text-error-dark text-sm px-2 py-1 rounded"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
         )}
       </div>
     </div>

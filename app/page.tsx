@@ -4,7 +4,7 @@ import CallToAction from '@/components/CallToAction'
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-background-light dark:bg-background-dark">
       <Hero />
       <Features />
       <CallToAction />

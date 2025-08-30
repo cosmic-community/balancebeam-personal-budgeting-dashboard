@@ -1,123 +1,81 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect } from 'react'
-import { AuthUser, LoginRequest, RegisterRequest } from '@/types'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
+import { AuthUser } from '@/types'
 
 interface AuthContextType {
   user: AuthUser | null
-  login: (credentials: LoginRequest) => Promise<boolean>
-  register: (userData: RegisterRequest) => Promise<boolean>
+  login: (token: string) => Promise<void>
   logout: () => void
   loading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function useAuth() {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
+interface AuthProviderProps {
+  children: ReactNode
 }
 
-export default function AuthProvider({ children }: { children: React.ReactNode }) {
+export default function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
-  useEffect(() => {
-    // Check for existing token on mount
-    const token = localStorage.getItem('auth-token')
-    if (token) {
-      // Verify token with server
-      fetch('/api/user', {
+  const fetchUser = async (token: string): Promise<AuthUser | null> => {
+    try {
+      const response = await fetch('/api/user', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.user) {
-          setUser(data.user)
-        } else {
-          localStorage.removeItem('auth-token')
-        }
-      })
-      .catch(() => {
-        localStorage.removeItem('auth-token')
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-    } else {
-      setLoading(false)
-    }
-  }, [])
-
-  const login = async (credentials: LoginRequest): Promise<boolean> => {
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(credentials)
-      })
-
-      const data = await response.json()
 
       if (response.ok) {
-        localStorage.setItem('auth-token', data.token)
-        setUser(data.user)
-        return true
-      } else {
-        console.error('Login failed:', data.error)
-        return false
+        const data = await response.json()
+        return data.user
       }
     } catch (error) {
-      console.error('Login error:', error)
-      return false
+      console.error('Failed to fetch user:', error)
     }
+    return null
   }
 
-  const register = async (userData: RegisterRequest): Promise<boolean> => {
-    try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userData)
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        localStorage.setItem('auth-token', data.token)
-        setUser(data.user)
-        return true
-      } else {
-        console.error('Registration failed:', data.error)
-        return false
-      }
-    } catch (error) {
-      console.error('Registration error:', error)
-      return false
-    }
+  const login = async (token: string) => {
+    localStorage.setItem('auth-token', token)
+    const userData = await fetchUser(token)
+    setUser(userData)
   }
 
   const logout = () => {
     localStorage.removeItem('auth-token')
     setUser(null)
-    // Optionally call logout endpoint
-    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {
-      // Silent fail for logout endpoint
-    })
+    router.push('/login')
   }
 
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem('auth-token')
+      if (token) {
+        const userData = await fetchUser(token)
+        setUser(userData)
+      }
+      setLoading(false)
+    }
+
+    initAuth()
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   )
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
 }

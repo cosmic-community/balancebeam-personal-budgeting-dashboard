@@ -1,31 +1,34 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import AuthProvider from "@/components/AuthProvider";
-import { ThemeProvider } from "@/components/ThemeProvider";
-import CosmicBadge from "@/components/CosmicBadge";
+import type { Metadata } from 'next'
+import './globals.css'
+import AuthProvider from '@/components/AuthProvider'
+import ThemeProvider from '@/components/ThemeProvider'
 
 export const metadata: Metadata = {
-  title: "Balance Beam - Personal Budgeting Dashboard",
-  description: "Track your finances with ease using Balance Beam, a comprehensive personal budgeting dashboard powered by Cosmic CMS.",
-};
+  title: 'BalanceBeam - Personal Budgeting Dashboard',
+  description: 'Take control of your finances with BalanceBeam, a modern personal budgeting dashboard powered by Cosmic CMS.',
+  keywords: 'budgeting, personal finance, dashboard, money management, expenses, income',
+  openGraph: {
+    title: 'BalanceBeam - Personal Budgeting Dashboard',
+    description: 'Take control of your finances with BalanceBeam',
+    type: 'website',
+  },
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
-  const bucketSlug = process.env.COSMIC_BUCKET_SLUG as string;
-
   return (
-    <html lang="en">
-      <body className="bg-background-light dark:bg-background-dark min-h-screen transition-colors duration-200">
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased">
         <ThemeProvider>
           <AuthProvider>
             {children}
-            <CosmicBadge bucketSlug={bucketSlug} />
           </AuthProvider>
         </ThemeProvider>
+        <script src="/dashboard-console-capture.js"></script>
       </body>
     </html>
-  );
+  )
 }

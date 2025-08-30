@@ -7,46 +7,72 @@ interface StatsCardsProps {
 }
 
 export default function StatsCards({ totalIncome, totalExpenses, netBalance }: StatsCardsProps) {
-  const stats = [
-    {
-      label: 'Total Income',
-      value: totalIncome,
-      icon: '💰',
-      color: 'text-success'
-    },
-    {
-      label: 'Total Expenses',
-      value: totalExpenses,
-      icon: '💸',
-      color: 'text-error'
-    },
-    {
-      label: 'Net Balance',
-      value: netBalance,
-      icon: netBalance >= 0 ? '📈' : '📉',
-      color: netBalance >= 0 ? 'text-success' : 'text-error'
-    }
-  ]
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-grid-gap">
-      {stats.map((stat, index) => (
-        <div key={index} className="card">
+      {/* Total Income */}
+      <div className="card">
+        <div className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark mb-1">
-                {stat.label}
+              <p className="text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                Total Income
               </p>
-              <p className={`text-number ${stat.color}`}>
-                {formatCurrency(stat.value)}
+              <p className="text-2xl font-bold text-income mt-2">
+                {formatCurrency(totalIncome)}
               </p>
             </div>
-            <div className="text-3xl">
-              {stat.icon}
+            <div className="flex items-center justify-center w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg">
+              <span className="text-2xl">📈</span>
             </div>
           </div>
         </div>
-      ))}
+      </div>
+
+      {/* Total Expenses */}
+      <div className="card">
+        <div className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                Total Expenses
+              </p>
+              <p className="text-2xl font-bold text-expense mt-2">
+                {formatCurrency(totalExpenses)}
+              </p>
+            </div>
+            <div className="flex items-center justify-center w-12 h-12 bg-red-100 dark:bg-red-900 rounded-lg">
+              <span className="text-2xl">📉</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Net Balance */}
+      <div className="card">
+        <div className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text-secondary-light dark:text-text-secondary-dark">
+                Net Balance
+              </p>
+              <p className={`text-2xl font-bold mt-2 ${
+                netBalance >= 0 ? 'text-income' : 'text-expense'
+              }`}>
+                {formatCurrency(netBalance)}
+              </p>
+            </div>
+            <div className={`flex items-center justify-center w-12 h-12 rounded-lg ${
+              netBalance >= 0 
+                ? 'bg-green-100 dark:bg-green-900' 
+                : 'bg-red-100 dark:bg-red-900'
+            }`}>
+              <span className="text-2xl">
+                {netBalance >= 0 ? '💰' : '⚠️'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

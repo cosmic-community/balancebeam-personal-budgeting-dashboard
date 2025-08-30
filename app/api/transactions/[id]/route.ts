@@ -9,10 +9,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // IMPORTANT: In Next.js 15+, params are now Promises and MUST be awaited
     const { id } = await params
 
-    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -23,7 +21,7 @@ export async function PUT(
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
         { error: 'Invalid token' },
@@ -34,21 +32,19 @@ export async function PUT(
     const body: Partial<TransactionFormData> = await request.json()
     const { type, amount, category, description, date } = body
 
-    // Build update object with only provided fields
     const updateData: any = {}
     
-    if (type) {
+    if (type && amount !== undefined) {
       updateData['metadata.type'] = {
         key: type,
         value: type === 'income' ? 'Income' : 'Expense'
       }
+      updateData['metadata.amount'] = type === 'expense' ? -Math.abs(amount) : Math.abs(amount)
     }
-    if (amount !== undefined) updateData['metadata.amount'] = parseFloat(amount.toString())
     if (category) updateData['metadata.category'] = category
     if (description !== undefined) updateData['metadata.description'] = description
     if (date) updateData['metadata.date'] = date
 
-    // Update transaction
     const updatedTransaction = await cosmic.objects.updateOne(id, updateData)
 
     return NextResponse.json({ transaction: updatedTransaction.object })
@@ -66,10 +62,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // IMPORTANT: In Next.js 15+, params are now Promises and MUST be awaited
     const { id } = await params
 
-    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -80,7 +74,7 @@ export async function DELETE(
       )
     }
 
-    const payload = verifyJWT(token)
+    const payload = await verifyJWT(token)
     if (!payload) {
       return NextResponse.json(
         { error: 'Invalid token' },
@@ -88,7 +82,6 @@ export async function DELETE(
       )
     }
 
-    // Delete transaction
     await cosmic.objects.deleteOne(id)
 
     return NextResponse.json({ success: true })

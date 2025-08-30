@@ -6,9 +6,7 @@ export const cosmic = createBucketClient({
   writeKey: process.env.COSMIC_WRITE_KEY as string,
 })
 
-// Simple error helper for Cosmic SDK
-function hasStatus(error: unknown): error is { status: number } {
-  return typeof error === 'object' && error !== null && 'status' in error;
+// Error helper for Cosmic SDK
+export function hasStatus(error: unknown): error is { status: number } {
+  return typeof error === 'object' && error !== null && 'status' in error
 }
-
-export { hasStatus }

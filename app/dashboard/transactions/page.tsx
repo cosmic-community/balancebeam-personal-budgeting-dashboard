@@ -26,14 +26,14 @@ async function getTransactionsData(userId: string) {
     
     const transactions = transactionsResponse.objects as Transaction[]
 
-    // Get categories
+    // Get categories for the form
     const categoriesResponse = await cosmic.objects
       .find({ 
         type: 'categories',
         'metadata.user': userId 
       })
       .props(['id', 'title', 'slug', 'metadata'])
-
+    
     const categories = categoriesResponse.objects as Category[]
 
     return {
@@ -57,7 +57,6 @@ export default async function TransactionsPage() {
   const headersList = await headers()
   const authHeader = headersList.get('authorization') || headersList.get('cookie')
   
-  // Extract token from cookie if present
   let token: string | null = extractTokenFromHeader(authHeader)
   if (!token && authHeader?.includes('auth-token=')) {
     token = authHeader.split('auth-token=')[1]?.split(';')[0] || null
@@ -81,7 +80,6 @@ export default async function TransactionsPage() {
   return (
     <DashboardLayout user={data.user}>
       <div className="space-y-grid-gap">
-        {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
@@ -93,7 +91,6 @@ export default async function TransactionsPage() {
           </div>
         </div>
 
-        {/* Transactions List Component */}
         <TransactionsList 
           transactions={data.transactions}
           categories={data.categories}

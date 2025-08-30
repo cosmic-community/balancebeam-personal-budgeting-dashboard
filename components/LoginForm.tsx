@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/components/AuthProvider'
 import { validateEmail } from '@/lib/utils'
 
 export default function LoginForm() {
@@ -9,18 +10,31 @@ export default function LoginForm() {
     email: '',
     password: ''
   })
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const router = useRouter()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrors({})
     setLoading(true)
-    setError('')
 
-    // Validate email
-    if (!validateEmail(formData.email)) {
-      setError('Please enter a valid email address')
+    // Validate form
+    const newErrors: Record<string, string> = {}
+    
+    if (!formData.email) {
+      newErrors.email = 'Email is required'
+    } else if (!validateEmail(formData.email)) {
+      newErrors.email = 'Invalid email format'
+    }
+    
+    if (!formData.password) {
+      newErrors.password = 'Password is required'
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
       setLoading(false)
       return
     }
@@ -37,68 +51,67 @@ export default function LoginForm() {
       const data = await response.json()
 
       if (response.ok) {
-        // Store the token
-        localStorage.setItem('auth-token', data.token)
-        // Redirect to dashboard
+        await login(data.token)
         router.push('/dashboard')
       } else {
-        setError(data.error || 'Login failed')
+        setErrors({ submit: data.error || 'Login failed' })
       }
     } catch (error) {
       console.error('Login error:', error)
-      setError('Something went wrong. Please try again.')
+      setErrors({ submit: 'An unexpected error occurred' })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {error && (
-          <div className="bg-error/10 border border-error text-error px-4 py-3 rounded-md text-sm">
-            {error}
-          </div>
-        )}
-
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-            placeholder="your@email.com"
-            required
-          />
-        </div>
-
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={formData.password}
-            onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-accent"
-            placeholder="Enter your password"
-            required
-          />
-        </div>
-
-        <button
-          type="submit"
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="form-label">Email</label>
+        <input
+          type="email"
+          value={formData.email}
+          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+          className="form-input"
+          placeholder="Enter your email"
           disabled={loading}
-          className="w-full btn-primary py-3"
-        >
-          {loading ? 'Logging in...' : 'Log In'}
-        </button>
-      </form>
-    </div>
+        />
+        {errors.email && <p className="form-error">{errors.email}</p>}
+      </div>
+
+      <div>
+        <label className="form-label">Password</label>
+        <input
+          type="password"
+          value={formData.password}
+          onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+          className="form-input"
+          placeholder="Enter your password"
+          disabled={loading}
+        />
+        {errors.password && <p className="form-error">{errors.password}</p>}
+      </div>
+
+      {errors.submit && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <p className="text-red-600 dark:text-red-400 text-sm">{errors.submit}</p>
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full btn-primary"
+      >
+        {loading ? (
+          <div className="flex items-center justify-center">
+            <div className="loading-spinner mr-2"></div>
+            Signing in...
+          </div>
+        ) : (
+          'Sign In'
+        )}
+      </button>
+    </form>
   )
 }

@@ -3,9 +3,9 @@ import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 export const generateSlug = (text: string): string => {
   return text
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Remove multiple consecutive hyphens
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
     .trim()
 }
 
@@ -25,15 +25,12 @@ export const formatDate = (dateString: string): string => {
   })
 }
 
-// Email validation function
 export const validateEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   return emailRegex.test(email)
 }
 
-// Password validation function
 export const validatePassword = (password: string): boolean => {
-  // At least 8 characters, contains letters and numbers
   return password.length >= 8 && /[a-zA-Z]/.test(password) && /\d/.test(password)
 }
 
@@ -43,7 +40,6 @@ export const calculateCategoryBreakdown = (expenseTransactions: Transaction[]): 
   const categoryTotals = new Map<string, { name: string, amount: number, color: string }>()
   
   expenseTransactions.forEach(transaction => {
-    // Safe access to category data
     const category = transaction.metadata.category
     if (typeof category === 'object' && category?.metadata) {
       const categoryName = category.metadata.name || 'Unknown Category'
@@ -94,10 +90,12 @@ export const calculateMonthlyData = (transactions: Transaction[]): MonthlyDataIt
     monthlyTotals.set(monthKey, existing)
   })
 
-  return Array.from(monthlyTotals.entries()).map(([month, data]) => ({
-    month,
-    income: data.income,
-    expenses: data.expenses,
-    net: data.income - data.expenses
-  }))
+  return Array.from(monthlyTotals.entries())
+    .map(([month, data]) => ({
+      month,
+      income: data.income,
+      expenses: data.expenses,
+      net: data.income - data.expenses
+    }))
+    .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
 }
