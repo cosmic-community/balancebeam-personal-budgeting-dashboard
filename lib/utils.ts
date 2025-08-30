@@ -28,6 +28,44 @@ export function generateSlug(text: string): string {
     .replace(/(^-|-$)+/g, '')
 }
 
+// Email validation utility
+export function validateEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+// Password validation utility
+export function validatePassword(password: string): { isValid: boolean; errors: string[] } {
+  const errors: string[] = []
+  
+  if (password.length < 8) {
+    errors.push('Password must be at least 8 characters long')
+  }
+  
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter')
+  }
+  
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter')
+  }
+  
+  if (!/\d/.test(password)) {
+    errors.push('Password must contain at least one number')
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  }
+}
+
+// Format date for HTML input fields
+export function formatDateForInput(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toISOString().split('T')[0]
+}
+
 // Dashboard calculation utilities
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
@@ -122,4 +160,31 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
     const dateB = new Date(b.month)
     return dateA.getTime() - dateB.getTime()
   })
+}
+
+// Hash password utility with proper parameter validation
+export async function hashPassword(password: string): Promise<string> {
+  // Validate password parameter
+  if (!password || typeof password !== 'string') {
+    throw new Error('Password must be a valid string')
+  }
+
+  const bcrypt = await import('bcryptjs')
+  const saltRounds = 12
+  return bcrypt.hash(password, saltRounds)
+}
+
+// Compare password utility with proper parameter validation
+export async function comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
+  // Validate parameters
+  if (!plainPassword || typeof plainPassword !== 'string') {
+    throw new Error('Plain password must be a valid string')
+  }
+  
+  if (!hashedPassword || typeof hashedPassword !== 'string') {
+    throw new Error('Hashed password must be a valid string')
+  }
+
+  const bcrypt = await import('bcryptjs')
+  return bcrypt.compare(plainPassword, hashedPassword)
 }
