@@ -1,11 +1,36 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwindcss-merge'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Environment variable helpers
+export function getCosmicBucketSlug(): string {
+  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
+  if (!bucketSlug) {
+    throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
+  }
+  return bucketSlug
+}
+
+export function getCosmicReadKey(): string {
+  const readKey = process.env.COSMIC_READ_KEY
+  if (!readKey) {
+    throw new Error('COSMIC_READ_KEY environment variable is required')
+  }
+  return readKey
+}
+
+export function getCosmicWriteKey(): string {
+  const writeKey = process.env.COSMIC_WRITE_KEY
+  if (!writeKey) {
+    throw new Error('COSMIC_WRITE_KEY environment variable is required')
+  }
+  return writeKey
+}
+
+// Format currency helper
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -13,14 +38,19 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-export function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
+// Format date for HTML input[type="date"] - YYYY-MM-DD format
+export function formatDateForInput(dateInput: string | Date): string {
+  const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    return new Date().toISOString().split('T')[0]
+  }
+  
+  return date.toISOString().split('T')[0]
 }
 
+// Generate slug helper
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
@@ -30,86 +60,18 @@ export function generateSlug(text: string): string {
     .trim()
 }
 
-export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
-  const categoryTotals: { [key: string]: { amount: number; color: string; name: string } } = {}
-  
-  transactions.forEach(transaction => {
-    const categoryName = typeof transaction.metadata.category === 'object' 
-      ? transaction.metadata.category?.metadata?.name || 'Unknown'
-      : 'Unknown'
-    const categoryColor = typeof transaction.metadata.category === 'object'
-      ? transaction.metadata.category?.metadata?.color || '#999999'
-      : '#999999'
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    
-    if (categoryTotals[categoryName]) {
-      categoryTotals[categoryName].amount += amount
-    } else {
-      categoryTotals[categoryName] = {
-        amount,
-        color: categoryColor,
-        name: categoryName
-      }
-    }
-  })
-  
-  const total = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
-  
-  return Object.values(categoryTotals).map(cat => ({
-    name: cat.name,
-    amount: cat.amount,
-    color: cat.color,
-    percentage: total > 0 ? (cat.amount / total) * 100 : 0
-  }))
+// Format date for display
+export function formatDate(dateString: string): string {
+  const date = new Date(dateString)
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
 }
 
-export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  const monthlyTotals: { [key: string]: { income: number; expenses: number } } = {}
-  
-  transactions.forEach(transaction => {
-    const date = new Date(transaction.metadata.date)
-    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
-    const amount = transaction.metadata.amount || 0
-    const isIncome = transaction.metadata.type?.key === 'income'
-    
-    if (!monthlyTotals[monthKey]) {
-      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
-    }
-    
-    if (isIncome) {
-      monthlyTotals[monthKey].income += amount
-    } else {
-      monthlyTotals[monthKey].expenses += Math.abs(amount)
-    }
-  })
-  
-  return Object.entries(monthlyTotals)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, data]) => ({
-      month,
-      income: data.income,
-      expenses: data.expenses,
-      net: data.income - data.expenses
-    }))
-}
-
-// Environment variable getters with proper fallbacks
-export function getCosmicBucketSlug(): string {
-  const slug = process.env.COSMIC_BUCKET_SLUG
-  if (!slug) {
-    throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
-  }
-  return slug
-}
-
-export function getCosmicReadKey(): string {
-  const key = process.env.COSMIC_READ_KEY
-  if (!key) {
-    throw new Error('COSMIC_READ_KEY environment variable is required')
-  }
-  return key
-}
-
-export function getCosmicWriteKey(): string | undefined {
-  return process.env.COSMIC_WRITE_KEY
+// Calculate percentage
+export function calculatePercentage(value: number, total: number): number {
+  if (total === 0) return 0
+  return Math.round((value / total) * 100)
 }
