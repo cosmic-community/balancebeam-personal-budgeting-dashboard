@@ -1,16 +1,28 @@
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem, getTransactionCategoryName, getTransactionCategoryColor } from '@/types'
 
-// Environment variable helpers
+// Environment variable helpers with proper fallback handling
 export function getCosmicBucketSlug(): string {
-  return process.env.COSMIC_BUCKET_SLUG || ''
+  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
+  if (!bucketSlug) {
+    throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
+  }
+  return bucketSlug
 }
 
 export function getCosmicReadKey(): string {
-  return process.env.COSMIC_READ_KEY || ''
+  const readKey = process.env.COSMIC_READ_KEY
+  if (!readKey) {
+    throw new Error('COSMIC_READ_KEY environment variable is required')
+  }
+  return readKey
 }
 
 export function getCosmicWriteKey(): string {
-  return process.env.COSMIC_WRITE_KEY || ''
+  const writeKey = process.env.COSMIC_WRITE_KEY
+  if (!writeKey) {
+    throw new Error('COSMIC_WRITE_KEY environment variable is required')
+  }
+  return writeKey
 }
 
 // Currency formatting
