@@ -113,7 +113,7 @@ export default function TransactionForm({ categories }: TransactionFormProps) {
               step="0.01"
               min="0"
               value={formData.amount || ''}
-              onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, amount: parseFloat(e.target.value || '0') }))}
               className="w-full pl-8 pr-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark"
               placeholder="0.00"
               required
@@ -151,7 +151,7 @@ export default function TransactionForm({ categories }: TransactionFormProps) {
           </label>
           <input
             type="text"
-            value={formData.description}
+            value={formData.description || ''}
             onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
             className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md text-text-primary-light dark:text-text-primary-dark"
             placeholder="What was this for?"
