@@ -1,39 +1,28 @@
 import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
+import { getJWTSecret } from './utils'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = process.env.JWT_SECRET
-const secret = JWT_SECRET ? new TextEncoder().encode(JWT_SECRET) : null
+const secret = new TextEncoder().encode(getJWTSecret())
 
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 12)
+  const saltRounds = 12
+  return await bcrypt.hash(password, saltRounds)
 }
 
-export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
-  return bcrypt.compare(password, hashedPassword)
+export async function comparePasswords(password: string, hashedPassword: string): Promise<boolean> {
+  return await bcrypt.compare(password, hashedPassword)
 }
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  if (!secret || !JWT_SECRET) {
-    throw new Error('JWT_SECRET environment variable is not set')
-  }
-
-  return new SignJWT(payload)
+  return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime('7d')
     .sign(secret)
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
-  if (!secret || !JWT_SECRET) {
-    // During build time, return null instead of throwing error
-    if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
-      return null
-    }
-    throw new Error('JWT_SECRET environment variable is not set')
-  }
-
   try {
     const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
@@ -46,8 +35,15 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 export function extractTokenFromHeader(authHeader: string | null): string | null {
   if (!authHeader) return null
   
+  // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
-    return authHeader.substring(7)
+    return authHeader.slice(7)
+  }
+  
+  // Handle cookie format
+  if (authHeader.includes('auth-token=')) {
+    const match = authHeader.match(/auth-token=([^;]+)/)
+    return match ? match[1] : null
   }
   
   return null
