@@ -1,6 +1,38 @@
+import { clsx, type ClassValue } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
-// Environment variable getters
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD'
+  }).format(amount)
+}
+
+export function formatDateForInput(date: Date | string): string {
+  const d = new Date(date)
+  return d.toISOString().split('T')[0]
+}
+
+export function formatDate(date: Date | string): string {
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
 export function getCosmicBucketSlug(): string {
   const slug = process.env.COSMIC_BUCKET_SLUG
   if (!slug) {
@@ -10,10 +42,7 @@ export function getCosmicBucketSlug(): string {
 }
 
 export function getCosmicReadKey(): string {
-  const key = process.env.COSMIC_READ_KEY
-  if (!key) {
-    throw new Error('COSMIC_READ_KEY environment variable is required')
-  }
+  const key = process.env.COSMIC_READ_KEY || ''
   return key
 }
 
@@ -25,142 +54,91 @@ export function getCosmicWriteKey(): string {
   return key
 }
 
-// Utility functions
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount)
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
 }
 
-export function formatDate(date: string | Date): string {
-  const d = new Date(date)
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-export function formatDateForInput(date: string | Date): string {
-  const d = new Date(date)
-  return d.toISOString().split('T')[0]
-}
-
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9 -]/g, '') // Remove invalid chars
-    .replace(/\s+/g, '-') // Replace spaces with -
-    .replace(/-+/g, '-') // Replace multiple - with single -
-    .trim() // Trim - from start and end
-}
-
-// Dashboard calculation functions
 export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
-  if (!transactions || transactions.length === 0) {
-    return []
-  }
-
-  // Group transactions by category
-  const categoryTotals: { [key: string]: { amount: number; color: string; name: string } } = {}
+  const categoryTotals = new Map<string, { amount: number; color: string; name: string }>()
   
   transactions.forEach(transaction => {
-    if (transaction.metadata.type?.key === 'expense' && transaction.metadata.amount) {
-      const categoryId = typeof transaction.metadata.category === 'object' 
-        ? transaction.metadata.category.id 
-        : transaction.metadata.category
-      
-      const categoryName = typeof transaction.metadata.category === 'object' 
-        ? transaction.metadata.category.metadata?.name || 'Unknown Category'
-        : 'Unknown Category'
-      
-      const categoryColor = typeof transaction.metadata.category === 'object'
-        ? transaction.metadata.category.metadata?.color || '#999999'
-        : '#999999'
-
-      if (categoryId && categoryName) {
-        if (!categoryTotals[categoryId]) {
-          categoryTotals[categoryId] = {
-            amount: 0,
-            color: categoryColor,
-            name: categoryName
-          }
-        }
-        
-        categoryTotals[categoryId].amount += Math.abs(transaction.metadata.amount)
-      }
+    const amount = Math.abs(transaction.metadata.amount || 0)
+    
+    // Safe access to category data
+    let categoryName = 'Unknown Category'
+    let categoryColor = '#999999'
+    
+    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category) {
+      categoryName = transaction.metadata.category.metadata?.name || 'Unknown Category'
+      categoryColor = transaction.metadata.category.metadata?.color || '#999999'
     }
+    
+    const existing = categoryTotals.get(categoryName) || { amount: 0, color: categoryColor, name: categoryName }
+    existing.amount += amount
+    categoryTotals.set(categoryName, existing)
   })
-
-  // Convert to array and calculate percentages
-  const totalExpenses = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
   
-  if (totalExpenses === 0) {
-    return []
-  }
-
-  return Object.values(categoryTotals)
-    .map(category => ({
-      name: category.name,
-      amount: category.amount,
-      color: category.color,
-      percentage: (category.amount / totalExpenses) * 100
-    }))
-    .sort((a, b) => b.amount - a.amount)
+  const total = Array.from(categoryTotals.values()).reduce((sum, cat) => sum + cat.amount, 0)
+  
+  return Array.from(categoryTotals.entries()).map(([name, data]) => ({
+    name: data.name,
+    amount: data.amount,
+    color: data.color,
+    percentage: total > 0 ? (data.amount / total) * 100 : 0
+  }))
 }
 
 export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
-  if (!transactions || transactions.length === 0) {
-    return []
-  }
-
-  // Group transactions by month
-  const monthlyTotals: { [key: string]: { income: number; expenses: number } } = {}
-
+  const monthlyTotals = new Map<string, { income: number; expenses: number }>()
+  
   transactions.forEach(transaction => {
-    if (transaction.metadata.date && transaction.metadata.amount && transaction.metadata.type?.key) {
-      const date = new Date(transaction.metadata.date)
-      const monthKey = date.toISOString().substring(0, 7) // YYYY-MM format
-      const monthName = date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short' 
-      })
-
-      if (!monthlyTotals[monthKey]) {
-        monthlyTotals[monthKey] = { income: 0, expenses: 0 }
-      }
-
-      if (transaction.metadata.type.key === 'income') {
-        monthlyTotals[monthKey].income += Math.abs(transaction.metadata.amount)
-      } else if (transaction.metadata.type.key === 'expense') {
-        monthlyTotals[monthKey].expenses += Math.abs(transaction.metadata.amount)
-      }
+    const date = new Date(transaction.metadata.date || new Date())
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const amount = Math.abs(transaction.metadata.amount || 0)
+    
+    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
+    
+    if (transaction.metadata.type?.key === 'income') {
+      existing.income += amount
+    } else if (transaction.metadata.type?.key === 'expense') {
+      existing.expenses += amount
     }
+    
+    monthlyTotals.set(monthKey, existing)
   })
-
+  
   // Convert to array and sort by month
-  return Object.keys(monthlyTotals)
-    .sort()
-    .map(monthKey => {
-      const date = new Date(monthKey + '-01')
-      const monthName = date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
+  const sortedData = Array.from(monthlyTotals.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([monthKey, data]) => {
+      const [year, month] = monthKey.split('-')
+      const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-US', { 
         month: 'short' 
       })
       
-      const monthData = monthlyTotals[monthKey]
+      // Handle potentially undefined monthData with proper null checks
+      const monthData = monthlyTotals.get(monthKey)
+      if (!monthData) {
+        return {
+          month: monthName,
+          income: 0,
+          expenses: 0,
+          net: 0
+        }
+      }
+      
+      const income = monthData.income || 0
+      const expenses = monthData.expenses || 0
+      const net = income - expenses
       
       return {
         month: monthName,
-        income: monthData.income,
-        expenses: monthData.expenses,
-        net: monthData.income - monthData.expenses
+        income,
+        expenses,
+        net
       }
     })
-}
-
-// Class name utility (similar to clsx)
-export function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ')
+  
+  return sortedData
 }
