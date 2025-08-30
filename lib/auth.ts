@@ -2,14 +2,14 @@ import { SignJWT, jwtVerify } from 'jose'
 import { JWTPayload } from '@/types'
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-secret-key-here-change-in-production'
+  process.env.JWT_SECRET || 'your-secret-key'
 )
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('24h')
+    .setExpirationTime('7d')
     .sign(JWT_SECRET)
 }
 
@@ -24,18 +24,21 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
-  if (!authHeader) return null
-  
+  if (!authHeader) {
+    return null
+  }
+
   // Handle Bearer token format
   if (authHeader.startsWith('Bearer ')) {
-    return authHeader.slice(7)
+    const token = authHeader.substring(7)
+    return token || null
   }
-  
+
   // Handle cookie format
   if (authHeader.includes('auth-token=')) {
-    const match = authHeader.match(/auth-token=([^;]+)/)
-    return match ? match[1] : null
+    const token = authHeader.split('auth-token=')[1]?.split(';')[0]
+    return token || null
   }
-  
-  return authHeader
+
+  return null
 }
