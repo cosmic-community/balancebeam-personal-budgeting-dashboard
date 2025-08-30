@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { Transaction } from '@/types'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -13,21 +13,6 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-export function formatDateForInput(date: Date | string): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toISOString().split('T')[0]
-}
-
-export function formatDate(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-// Environment variable getters with proper null checks
 export function getCosmicBucketSlug(): string {
   const slug = process.env.COSMIC_BUCKET_SLUG
   if (!slug) {
@@ -55,69 +40,66 @@ export function getCosmicWriteKey(): string {
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w ]+/g, '')
-    .replace(/ +/g, '-')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
 }
 
-export function calculateCategoryBreakdown(transactions: Transaction[]) {
-  const categoryTotals = new Map<string, { name: string; amount: number; color: string }>()
+export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
+  const categoryTotals = new Map<string, { amount: number; color: string }>()
   
   transactions.forEach(transaction => {
-    const categoryName = typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata?.name
-      ? transaction.metadata.category.metadata.name
-      : 'Unknown'
+    let categoryName = 'Unknown Category'
+    let categoryColor = '#999999'
     
-    const categoryColor = typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata?.color
-      ? transaction.metadata.category.metadata.color
-      : '#999999'
+    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
+      categoryName = transaction.metadata.category.metadata.name || 'Unknown Category'
+      categoryColor = transaction.metadata.category.metadata.color || '#999999'
+    }
     
+    const existing = categoryTotals.get(categoryName)
     const amount = Math.abs(transaction.metadata.amount || 0)
     
-    if (categoryTotals.has(categoryName)) {
-      const existing = categoryTotals.get(categoryName)!
-      existing.amount += amount
-    } else {
-      categoryTotals.set(categoryName, {
-        name: categoryName,
-        amount,
-        color: categoryColor
-      })
-    }
+    categoryTotals.set(categoryName, {
+      amount: (existing?.amount || 0) + amount,
+      color: categoryColor
+    })
   })
-
-  const totalAmount = Array.from(categoryTotals.values()).reduce((sum, cat) => sum + cat.amount, 0)
   
-  return Array.from(categoryTotals.values()).map(category => ({
-    ...category,
-    percentage: totalAmount > 0 ? (category.amount / totalAmount) * 100 : 0
+  const total = Array.from(categoryTotals.values()).reduce((sum, item) => sum + item.amount, 0)
+  
+  return Array.from(categoryTotals.entries()).map(([name, data]) => ({
+    name,
+    amount: data.amount,
+    color: data.color,
+    percentage: total > 0 ? (data.amount / total) * 100 : 0
   }))
 }
 
-export function calculateMonthlyData(transactions: Transaction[]) {
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
   const monthlyTotals = new Map<string, { income: number; expenses: number }>()
   
   transactions.forEach(transaction => {
     const date = new Date(transaction.metadata.date)
-    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const monthKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+    const amount = Math.abs(transaction.metadata.amount || 0)
     
-    if (!monthlyTotals.has(monthKey)) {
-      monthlyTotals.set(monthKey, { income: 0, expenses: 0 })
-    }
-    
-    const monthData = monthlyTotals.get(monthKey)!
-    const amount = transaction.metadata.amount || 0
+    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
     
     if (transaction.metadata.type?.key === 'income') {
-      monthData.income += amount
+      existing.income += amount
     } else {
-      monthData.expenses += Math.abs(amount)
+      existing.expenses += amount
     }
+    
+    monthlyTotals.set(monthKey, existing)
   })
-
+  
   return Array.from(monthlyTotals.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([monthKey, data]) => ({
-      month: monthKey,
+    .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+    .map(([month, data]) => ({
+      month,
       income: data.income,
       expenses: data.expenses,
       net: data.income - data.expenses
