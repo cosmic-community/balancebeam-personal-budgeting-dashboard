@@ -18,15 +18,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by email
-    const userResponse = await cosmic.objects.findOne({
-      type: 'users',
-      'metadata.email': email
-    }).props(['id', 'title', 'metadata'])
+    const usersResponse = await cosmic.objects
+      .find({ 
+        type: 'users',
+        'metadata.email': email 
+      })
+      .props(['id', 'title', 'metadata'])
 
-    const user = userResponse.object as User
+    const users = usersResponse.objects as User[]
+    
+    if (users.length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    const user = users[0]
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.metadata.password_hash)
+    
     if (!isValidPassword) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
@@ -41,18 +53,15 @@ export async function POST(request: NextRequest) {
     })
 
     // Return user data and token
-    const userData = {
-      id: user.id,
-      email: user.metadata.email,
-      full_name: user.metadata.full_name,
-      dark_mode: user.metadata.dark_mode || false
-    }
-
     return NextResponse.json({
-      user: userData,
-      token
+      token,
+      user: {
+        id: user.id,
+        email: user.metadata.email,
+        full_name: user.metadata.full_name,
+        dark_mode: user.metadata.dark_mode || false
+      }
     })
-
   } catch (error) {
     console.error('Login error:', error)
     
