@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from './types'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '../types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -19,6 +19,11 @@ export function formatDate(dateString: string): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+export function formatDateForInput(dateInput: string | Date): string {
+  const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
+  return date.toISOString().split('T')[0]
 }
 
 export function generateSlug(text: string): string {
@@ -101,7 +106,6 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
     
     const date = new Date(transaction.metadata.date)
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
     
     const existing = monthlyTotals.get(monthKey)
     const amount = Math.abs(transaction.metadata.amount || 0)
