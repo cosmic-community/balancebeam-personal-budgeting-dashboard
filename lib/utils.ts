@@ -1,54 +1,31 @@
-// Utility functions for the application
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
-/**
- * Get the Cosmic bucket slug from environment variables
- */
+// Environment variable getters
 export function getCosmicBucketSlug(): string {
-  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
-  if (!bucketSlug) {
+  const slug = process.env.COSMIC_BUCKET_SLUG
+  if (!slug) {
     throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
   }
-  return bucketSlug
+  return slug
 }
 
-/**
- * Get the Cosmic read key from environment variables
- */
 export function getCosmicReadKey(): string {
-  const readKey = process.env.COSMIC_READ_KEY
-  if (!readKey) {
+  const key = process.env.COSMIC_READ_KEY
+  if (!key) {
     throw new Error('COSMIC_READ_KEY environment variable is required')
   }
-  return readKey
+  return key
 }
 
-/**
- * Get the Cosmic write key from environment variables
- */
 export function getCosmicWriteKey(): string {
-  const writeKey = process.env.COSMIC_WRITE_KEY
-  if (!writeKey) {
+  const key = process.env.COSMIC_WRITE_KEY
+  if (!key) {
     throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
-  return writeKey
+  return key
 }
 
-/**
- * Generate a URL-friendly slug from a string
- */
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9 -]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-/**
- * Format a number as currency
- */
+// Utility functions
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -56,115 +33,134 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-/**
- * Format a date string for display
- */
-export function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  return new Intl.DateTimeFormat('en-US', {
+export function formatDate(date: string | Date): string {
+  const d = new Date(date)
+  return d.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  }).format(date)
+  })
 }
 
-/**
- * Format a date for HTML input type="date"
- */
-export function formatDateForInput(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+export function formatDateForInput(date: string | Date): string {
+  const d = new Date(date)
+  return d.toISOString().split('T')[0]
 }
 
-/**
- * Validate email format
- */
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email.trim())
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9 -]/g, '') // Remove invalid chars
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(/-+/g, '-') // Replace multiple - with single -
+    .trim() // Trim - from start and end
 }
 
-/**
- * Validate password strength
- */
-export function isValidPassword(password: string): boolean {
-  // At least 6 characters
-  return password.length >= 6
-}
-
-/**
- * Get initials from a full name
- */
-export function getInitials(fullName: string): string {
-  return fullName
-    .split(' ')
-    .map(name => name.charAt(0).toUpperCase())
-    .join('')
-    .slice(0, 2)
-}
-
-/**
- * Truncate text to specified length
- */
-export function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text
-  return text.slice(0, maxLength) + '...'
-}
-
-/**
- * Calculate percentage change between two numbers
- */
-export function calculatePercentageChange(oldValue: number, newValue: number): number {
-  if (oldValue === 0) return newValue === 0 ? 0 : 100
-  return ((newValue - oldValue) / oldValue) * 100
-}
-
-/**
- * Debounce function to limit function calls
- */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null
-  
-  return (...args: Parameters<T>) => {
-    if (timeout !== null) {
-      clearTimeout(timeout)
-    }
-    timeout = setTimeout(() => func(...args), wait)
+// Dashboard calculation functions
+export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
+  if (!transactions || transactions.length === 0) {
+    return []
   }
-}
 
-/**
- * Deep clone an object
- */
-export function deepClone<T>(obj: T): T {
-  if (obj === null || typeof obj !== 'object') return obj
-  if (obj instanceof Date) return new Date(obj.getTime()) as unknown as T
-  if (obj instanceof Array) return obj.map(item => deepClone(item)) as unknown as T
-  if (typeof obj === 'object') {
-    const cloned = {} as T
-    for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        cloned[key] = deepClone(obj[key])
+  // Group transactions by category
+  const categoryTotals: { [key: string]: { amount: number; color: string; name: string } } = {}
+  
+  transactions.forEach(transaction => {
+    if (transaction.metadata.type?.key === 'expense' && transaction.metadata.amount) {
+      const categoryId = typeof transaction.metadata.category === 'object' 
+        ? transaction.metadata.category.id 
+        : transaction.metadata.category
+      
+      const categoryName = typeof transaction.metadata.category === 'object' 
+        ? transaction.metadata.category.metadata?.name || 'Unknown Category'
+        : 'Unknown Category'
+      
+      const categoryColor = typeof transaction.metadata.category === 'object'
+        ? transaction.metadata.category.metadata?.color || '#999999'
+        : '#999999'
+
+      if (categoryId && categoryName) {
+        if (!categoryTotals[categoryId]) {
+          categoryTotals[categoryId] = {
+            amount: 0,
+            color: categoryColor,
+            name: categoryName
+          }
+        }
+        
+        categoryTotals[categoryId].amount += Math.abs(transaction.metadata.amount)
       }
     }
-    return cloned
+  })
+
+  // Convert to array and calculate percentages
+  const totalExpenses = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
+  
+  if (totalExpenses === 0) {
+    return []
   }
-  return obj
+
+  return Object.values(categoryTotals)
+    .map(category => ({
+      name: category.name,
+      amount: category.amount,
+      color: category.color,
+      percentage: (category.amount / totalExpenses) * 100
+    }))
+    .sort((a, b) => b.amount - a.amount)
 }
 
-/**
- * Check if a value is empty (null, undefined, empty string, empty array, empty object)
- */
-export function isEmpty(value: any): boolean {
-  if (value === null || value === undefined) return true
-  if (typeof value === 'string') return value.trim() === ''
-  if (Array.isArray(value)) return value.length === 0
-  if (typeof value === 'object') return Object.keys(value).length === 0
-  return false
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
+  if (!transactions || transactions.length === 0) {
+    return []
+  }
+
+  // Group transactions by month
+  const monthlyTotals: { [key: string]: { income: number; expenses: number } } = {}
+
+  transactions.forEach(transaction => {
+    if (transaction.metadata.date && transaction.metadata.amount && transaction.metadata.type?.key) {
+      const date = new Date(transaction.metadata.date)
+      const monthKey = date.toISOString().substring(0, 7) // YYYY-MM format
+      const monthName = date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short' 
+      })
+
+      if (!monthlyTotals[monthKey]) {
+        monthlyTotals[monthKey] = { income: 0, expenses: 0 }
+      }
+
+      if (transaction.metadata.type.key === 'income') {
+        monthlyTotals[monthKey].income += Math.abs(transaction.metadata.amount)
+      } else if (transaction.metadata.type.key === 'expense') {
+        monthlyTotals[monthKey].expenses += Math.abs(transaction.metadata.amount)
+      }
+    }
+  })
+
+  // Convert to array and sort by month
+  return Object.keys(monthlyTotals)
+    .sort()
+    .map(monthKey => {
+      const date = new Date(monthKey + '-01')
+      const monthName = date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short' 
+      })
+      
+      const monthData = monthlyTotals[monthKey]
+      
+      return {
+        month: monthName,
+        income: monthData.income,
+        expenses: monthData.expenses,
+        net: monthData.income - monthData.expenses
+      }
+    })
+}
+
+// Class name utility (similar to clsx)
+export function cn(...classes: (string | undefined | null | false)[]): string {
+  return classes.filter(Boolean).join(' ')
 }
