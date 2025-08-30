@@ -1,24 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic } from '@/lib/cosmic'
 import { hashPassword, signJWT } from '@/lib/auth'
-import { RegisterRequest, User } from '@/types'
 import { generateSlug } from '@/lib/utils'
+import { RegisterRequest } from '@/types'
 
 export async function POST(request: NextRequest) {
-  // Handle build-time execution
-  if (!process.env.JWT_SECRET) {
-    if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
-      return NextResponse.json(
-        { error: 'Service temporarily unavailable' },
-        { status: 503 }
-      )
-    }
-    return NextResponse.json(
-      { error: 'JWT_SECRET environment variable is not set' },
-      { status: 500 }
-    )
-  }
-
   try {
     const body: RegisterRequest = await request.json()
     const { full_name, email, password, confirmPassword } = body
@@ -47,19 +33,24 @@ export async function POST(request: NextRequest) {
 
     // Check if user already exists
     try {
-      const existingUser = await cosmic.objects.findOne({
-        type: 'users',
-        'metadata.email': email
-      })
+      const existingUserResponse = await cosmic.objects
+        .find({ 
+          type: 'users',
+          'metadata.email': email 
+        })
+        .props(['id'])
 
-      if (existingUser.object) {
+      if (existingUserResponse.objects.length > 0) {
         return NextResponse.json(
-          { error: 'User already exists with this email' },
+          { error: 'User already exists' },
           { status: 409 }
         )
       }
     } catch (error) {
-      // User doesn't exist, continue with registration
+      // If 404, user doesn't exist which is what we want
+      if (!error || typeof error !== 'object' || !('status' in error) || error.status !== 404) {
+        throw error
+      }
     }
 
     // Hash password
@@ -79,30 +70,30 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const user = newUser.object as User
-
-    // Create JWT token
+    // Generate JWT token
     const token = await signJWT({
-      userId: user.id,
-      email: user.metadata.email
+      userId: newUser.object.id,
+      email,
+      full_name,
+      dark_mode: false
     })
 
+    // Set HTTP-only cookie
     const response = NextResponse.json({
       user: {
-        id: user.id,
-        email: user.metadata.email,
-        full_name: user.metadata.full_name,
-        dark_mode: user.metadata.dark_mode || false
+        id: newUser.object.id,
+        email,
+        full_name,
+        dark_mode: false
       },
       token
     })
 
-    // Set HTTP-only cookie
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 // 24 hours
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 * 7 // 7 days
     })
 
     return response
