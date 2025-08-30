@@ -1,30 +1,21 @@
-import * as jose from 'jose'
+import { SignJWT, jwtVerify } from 'jose'
+import bcrypt from 'bcryptjs'
 import { JWTPayload } from '@/types'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development-only-not-for-production'
-
-// Convert string secret to Uint8Array for jose library
-function getSecretKey(): Uint8Array {
-  return new TextEncoder().encode(JWT_SECRET)
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
+const secret = new TextEncoder().encode(JWT_SECRET)
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  const secret = getSecretKey()
-  
-  const jwt = await new jose.SignJWT(payload)
+  return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('24h')
     .sign(secret)
-    
-  return jwt
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
   try {
-    const secret = getSecretKey()
-    const { payload } = await jose.jwtVerify(token, secret)
-    
+    const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload
   } catch (error) {
     console.error('JWT verification failed:', error)
@@ -33,11 +24,19 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 export function extractTokenFromHeader(authHeader: string | null): string | null {
-  if (!authHeader) return null
-  
-  if (authHeader.startsWith('Bearer ')) {
-    return authHeader.substring(7)
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null
   }
-  
-  return null
+  return authHeader.substring(7)
+}
+
+// Hash password function - CRITICAL: This was missing and causing TypeScript errors
+export async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12
+  return await bcrypt.hash(password, saltRounds)
+}
+
+// Compare passwords function - CRITICAL: This was missing and causing TypeScript errors  
+export async function comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
+  return await bcrypt.compare(plainPassword, hashedPassword)
 }
