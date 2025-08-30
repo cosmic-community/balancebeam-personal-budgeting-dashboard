@@ -1,14 +1,14 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { AuthUser, LoginRequest, RegisterRequest } from '@/types'
+import { AuthUser, JWTPayload } from '@/types'
 
 interface AuthContextType {
   user: AuthUser | null
-  isLoading: boolean
-  login: (credentials: LoginRequest) => Promise<boolean>
-  register: (userData: RegisterRequest) => Promise<boolean>
+  loading: boolean
+  login: (email: string, password: string) => Promise<void>
+  register: (fullName: string, email: string, password: string) => Promise<void>
   logout: () => void
 }
 
@@ -28,18 +28,19 @@ interface AuthProviderProps {
 
 export default function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
 
+  // Check if user is authenticated on mount and page refresh
   useEffect(() => {
-    checkAuthStatus()
+    checkAuth()
   }, [])
 
-  const checkAuthStatus = async () => {
+  const checkAuth = async () => {
     try {
       const token = localStorage.getItem('auth-token')
       if (!token) {
-        setIsLoading(false)
+        setLoading(false)
         return
       }
 
@@ -53,60 +54,68 @@ export default function AuthProvider({ children }: AuthProviderProps) {
         const data = await response.json()
         setUser(data.user)
       } else {
+        // Token is invalid, remove it
         localStorage.removeItem('auth-token')
+        setUser(null)
       }
     } catch (error) {
-      console.error('Auth check failed:', error)
+      console.error('Auth check error:', error)
       localStorage.removeItem('auth-token')
+      setUser(null)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const login = async (credentials: LoginRequest): Promise<boolean> => {
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(credentials)
-      })
+  const login = async (email: string, password: string) => {
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    })
 
-      if (response.ok) {
-        const data = await response.json()
-        localStorage.setItem('auth-token', data.token)
-        setUser(data.user)
-        return true
-      }
-      return false
-    } catch (error) {
-      console.error('Login failed:', error)
-      return false
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Login failed')
     }
+
+    // Store token and user data
+    localStorage.setItem('auth-token', data.token)
+    setUser(data.user)
+    
+    // Redirect to dashboard
+    router.push('/dashboard')
   }
 
-  const register = async (userData: RegisterRequest): Promise<boolean> => {
-    try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userData)
-      })
+  const register = async (fullName: string, email: string, password: string) => {
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        full_name: fullName, 
+        email, 
+        password,
+        confirmPassword: password
+      }),
+    })
 
-      if (response.ok) {
-        const data = await response.json()
-        localStorage.setItem('auth-token', data.token)
-        setUser(data.user)
-        return true
-      }
-      return false
-    } catch (error) {
-      console.error('Registration failed:', error)
-      return false
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Registration failed')
     }
+
+    // Store token and user data
+    localStorage.setItem('auth-token', data.token)
+    setUser(data.user)
+    
+    // Redirect to dashboard
+    router.push('/dashboard')
   }
 
   const logout = () => {
@@ -115,12 +124,12 @@ export default function AuthProvider({ children }: AuthProviderProps) {
     router.push('/login')
   }
 
-  const value: AuthContextType = {
+  const value = {
     user,
-    isLoading,
+    loading,
     login,
     register,
-    logout
+    logout,
   }
 
   return (
