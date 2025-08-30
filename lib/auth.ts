@@ -1,30 +1,39 @@
 import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
-import { getJWTSecret } from './utils'
-import { JWTPayload } from '../types'
+import { JWTPayload } from '@/types'
 
-const secret = new TextEncoder().encode(getJWTSecret())
+const JWT_SECRET = process.env.JWT_SECRET
+const secret = JWT_SECRET ? new TextEncoder().encode(JWT_SECRET) : null
 
 export async function hashPassword(password: string): Promise<string> {
-  const saltRounds = 12
-  return await bcrypt.hash(password, saltRounds)
+  return bcrypt.hash(password, 12)
 }
 
-export async function comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
-  return await bcrypt.compare(plainPassword, hashedPassword)
+export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(password, hashedPassword)
 }
 
 export async function signJWT(payload: JWTPayload): Promise<string> {
-  const jwt = await new SignJWT(payload)
+  if (!secret || !JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is not set')
+  }
+
+  return new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime('24h')
     .sign(secret)
-  
-  return jwt
 }
 
 export async function verifyJWT(token: string): Promise<JWTPayload | null> {
+  if (!secret || !JWT_SECRET) {
+    // During build time, return null instead of throwing error
+    if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
+      return null
+    }
+    throw new Error('JWT_SECRET environment variable is not set')
+  }
+
   try {
     const { payload } = await jwtVerify(token, secret)
     return payload as JWTPayload

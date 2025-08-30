@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cosmic, hasStatus } from '@/lib/cosmic'
-import { signJWT, hashPassword } from '@/lib/auth'
-import { isValidEmail, isValidPassword, generateSlug } from '@/lib/utils'
-import { RegisterRequest } from '@/types'
+import { cosmic } from '@/lib/cosmic'
+import { hashPassword, signJWT } from '@/lib/auth'
+import { RegisterRequest, User } from '@/types'
+import { generateSlug } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
+  // Handle build-time execution
+  if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
+      return NextResponse.json(
+        { error: 'Service temporarily unavailable' },
+        { status: 503 }
+      )
+    }
+    return NextResponse.json(
+      { error: 'JWT_SECRET environment variable is not set' },
+      { status: 500 }
+    )
+  }
+
   try {
     const body: RegisterRequest = await request.json()
     const { full_name, email, password, confirmPassword } = body
@@ -24,42 +38,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!isValidEmail(email)) {
+    if (password.length < 6) {
       return NextResponse.json(
-        { error: 'Please enter a valid email address' },
-        { status: 400 }
-      )
-    }
-
-    if (!isValidPassword(password)) {
-      return NextResponse.json(
-        { error: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number' },
+        { error: 'Password must be at least 6 characters' },
         { status: 400 }
       )
     }
 
     // Check if user already exists
     try {
-      const existingUserResponse = await cosmic.objects.find({
+      const existingUser = await cosmic.objects.findOne({
         type: 'users',
         'metadata.email': email
-      }).props(['id'])
+      })
 
-      if (existingUserResponse.objects && existingUserResponse.objects.length > 0) {
+      if (existingUser.object) {
         return NextResponse.json(
-          { error: 'User with this email already exists' },
+          { error: 'User already exists with this email' },
           { status: 409 }
         )
       }
     } catch (error) {
-      // If error is 404, no user exists, which is what we want
-      if (!hasStatus(error) || error.status !== 404) {
-        console.error('Error checking existing user:', error)
-        return NextResponse.json(
-          { error: 'Internal server error' },
-          { status: 500 }
-        )
-      }
+      // User doesn't exist, continue with registration
     }
 
     // Hash password
@@ -72,36 +72,44 @@ export async function POST(request: NextRequest) {
       slug: generateSlug(full_name + '-' + Date.now()),
       metadata: {
         full_name,
-        email: email.toLowerCase(),
+        email,
         password_hash,
         dark_mode: false,
-        created_at: new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+        created_at: new Date().toISOString().split('T')[0]
       }
     })
 
-    // Generate JWT token
+    const user = newUser.object as User
+
+    // Create JWT token
     const token = await signJWT({
-      userId: newUser.object.id,
-      email: email.toLowerCase()
+      userId: user.id,
+      email: user.metadata.email
     })
 
-    // Return user data (excluding password hash)
-    const userResponse = {
-      id: newUser.object.id,
-      email: newUser.object.metadata.email,
-      full_name: newUser.object.metadata.full_name,
-      dark_mode: newUser.object.metadata.dark_mode || false
-    }
-
-    return NextResponse.json({
-      user: userResponse,
+    const response = NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.metadata.email,
+        full_name: user.metadata.full_name,
+        dark_mode: user.metadata.dark_mode || false
+      },
       token
     })
 
+    // Set HTTP-only cookie
+    response.cookies.set('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 // 24 hours
+    })
+
+    return response
   } catch (error) {
     console.error('Registration error:', error)
     return NextResponse.json(
-      { error: 'Registration failed. Please try again.' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
