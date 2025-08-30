@@ -6,6 +6,7 @@ import { TransactionFormData } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
     const body: TransactionFormData = await request.json()
     const { type, amount, category, description, date } = body
 
+    // Validate input
     if (!type || !amount || !category || !date) {
       return NextResponse.json(
         { error: 'Type, amount, category, and date are required' },
@@ -34,18 +36,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create transaction
     const newTransaction = await cosmic.objects.insertOne({
       type: 'transactions',
-      title: description || `${type} transaction`,
-      slug: generateSlug(`${type}-${Date.now()}-${payload.userId}`),
+      title: description || `${type === 'income' ? 'Income' : 'Expense'} - ${new Date(date).toLocaleDateString()}`,
+      slug: generateSlug(`${type}-${payload.userId}-${Date.now()}`),
       metadata: {
         user: payload.userId,
         type: {
           key: type,
           value: type === 'income' ? 'Income' : 'Expense'
         },
-        amount: type === 'expense' ? -Math.abs(amount) : Math.abs(amount),
-        category: category,
+        amount: Math.abs(amount), // Store as positive number
+        category,
         description: description || '',
         date
       }
@@ -63,6 +66,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -81,6 +85,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get transactions with related data
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',

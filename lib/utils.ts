@@ -1,110 +1,118 @@
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
-// Environment variable helpers
+// Environment variable getters with proper fallbacks
 export function getCosmicBucketSlug(): string {
-  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
-  if (!bucketSlug) {
+  const slug = process.env.COSMIC_BUCKET_SLUG
+  if (!slug) {
     throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
   }
-  return bucketSlug
+  return slug
 }
 
 export function getCosmicReadKey(): string {
-  const readKey = process.env.COSMIC_READ_KEY
-  if (!readKey) {
+  const key = process.env.COSMIC_READ_KEY
+  if (!key) {
     throw new Error('COSMIC_READ_KEY environment variable is required')
   }
-  return readKey
+  return key
 }
 
 export function getCosmicWriteKey(): string {
-  const writeKey = process.env.COSMIC_WRITE_KEY
-  if (!writeKey) {
+  const key = process.env.COSMIC_WRITE_KEY
+  if (!key) {
     throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
-  return writeKey
+  return key
 }
 
-// Date formatting utilities
-export function formatDate(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-export function formatDateForInput(date: Date | string): string {
-  const dateObj = typeof date === 'string' ? new Date(date) : date
-  return dateObj.toISOString().split('T')[0]
+// Slug generation utility
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/[\s_-]+/g, '-') // Replace spaces and underscores with hyphens
+    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
 }
 
 // Currency formatting
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD'
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount)
 }
 
-// String utilities
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w ]+/g, '')
-    .replace(/ +/g, '-')
+// Date formatting utilities
+export function formatDate(dateString: string): string {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
 }
 
-export function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1)
+export function formatDateForInput(date: Date): string {
+  return date.toISOString().split('T')[0]
 }
 
-// Validation utilities
+// Email validation
 export function validateEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   return emailRegex.test(email)
 }
 
-export function validatePassword(password: string): boolean {
-  // At least 8 characters, contains at least one letter and one number
-  return password.length >= 8 && /[A-Za-z]/.test(password) && /\d/.test(password)
+// Password validation
+export function validatePassword(password: string): string | null {
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long'
+  }
+  if (!/(?=.*[a-z])/.test(password)) {
+    return 'Password must contain at least one lowercase letter'
+  }
+  if (!/(?=.*[A-Z])/.test(password)) {
+    return 'Password must contain at least one uppercase letter'
+  }
+  if (!/(?=.*\d)/.test(password)) {
+    return 'Password must contain at least one number'
+  }
+  return null
 }
 
-// Array utilities
-export function groupBy<T>(array: T[], keyFn: (item: T) => string): Record<string, T[]> {
-  return array.reduce((groups, item) => {
-    const key = keyFn(item)
-    if (!groups[key]) {
-      groups[key] = []
-    }
-    groups[key].push(item)
-    return groups
-  }, {} as Record<string, T[]>)
+// Calculate percentage
+export function calculatePercentage(part: number, total: number): number {
+  if (total === 0) return 0
+  return Math.round((part / total) * 100 * 100) / 100 // Round to 2 decimal places
 }
 
-export function sortBy<T>(array: T[], keyFn: (item: T) => any, direction: 'asc' | 'desc' = 'asc'): T[] {
-  return [...array].sort((a, b) => {
-    const aVal = keyFn(a)
-    const bVal = keyFn(b)
-    
-    if (aVal < bVal) return direction === 'asc' ? -1 : 1
-    if (aVal > bVal) return direction === 'asc' ? 1 : -1
-    return 0
-  })
+// Safe number parsing
+export function safeParseFloat(value: string | number): number {
+  if (typeof value === 'number') return value
+  const parsed = parseFloat(value)
+  return isNaN(parsed) ? 0 : parsed
 }
 
-// Number utilities
-export function roundToDecimals(num: number, decimals: number = 2): number {
-  return Math.round(num * Math.pow(10, decimals)) / Math.pow(10, decimals)
+// Class name utility for conditional styling
+export function cn(...classes: (string | undefined | null | boolean)[]): string {
+  return classes
+    .filter(Boolean)
+    .join(' ')
 }
 
-// Local storage utilities with error handling
+// Debounce utility for search/input
+export function debounce<T extends (...args: any[]) => void>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => func(...args), wait)
+  }
+}
+
+// Local storage helpers with error handling
 export function getFromLocalStorage(key: string): string | null {
   if (typeof window === 'undefined') return null
   
@@ -140,113 +148,44 @@ export function removeFromLocalStorage(key: string): boolean {
   }
 }
 
-// Type guards
-export function isValidDate(date: any): date is Date {
-  return date instanceof Date && !isNaN(date.getTime())
+// Type-safe object key checking
+export function hasOwnProperty<T extends object>(
+  obj: T,
+  key: string | number | symbol
+): key is keyof T {
+  return Object.prototype.hasOwnProperty.call(obj, key)
 }
 
-export function isValidNumber(value: any): value is number {
-  return typeof value === 'number' && !isNaN(value) && isFinite(value)
-}
+// Format relative time (e.g., "2 days ago")
+export function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
 
-// Theme utilities
-export function getSystemTheme(): 'light' | 'dark' {
-  if (typeof window === 'undefined') return 'light'
-  
-  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches 
-    ? 'dark' 
-    : 'light'
-}
-
-// Safe property access utilities
-export function safeAccess<T>(obj: any, path: string, defaultValue: T): T {
-  if (!obj || typeof obj !== 'object') return defaultValue
-  
-  const keys = path.split('.')
-  let current = obj
-  
-  for (const key of keys) {
-    if (current && typeof current === 'object' && key in current) {
-      current = current[key]
-    } else {
-      return defaultValue
-    }
+  if (diffInSeconds < 60) {
+    return 'Just now'
   }
-  
-  return current !== undefined ? current : defaultValue
-}
 
-// Calculate percentage
-export function calculatePercentage(part: number, total: number): number {
-  if (total === 0) return 0
-  return roundToDecimals((part / total) * 100, 1)
-}
-
-// Format file size
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-  
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  
-  return roundToDecimals(bytes / Math.pow(k, i), 2) + ' ' + sizes[i]
-}
-
-// Debounce function
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  delay: number
-): (...args: Parameters<T>) => void {
-  let timeoutId: NodeJS.Timeout
-  
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId)
-    timeoutId = setTimeout(() => func(...args), delay)
+  const diffInMinutes = Math.floor(diffInSeconds / 60)
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`
   }
-}
 
-// Get month name
-export function getMonthName(monthIndex: number): string {
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ]
-  return months[monthIndex] || 'Unknown'
-}
-
-// Deep clone utility
-export function deepClone<T>(obj: T): T {
-  if (obj === null || typeof obj !== 'object') return obj
-  if (obj instanceof Date) return new Date(obj.getTime()) as any
-  if (obj instanceof Array) return obj.map(item => deepClone(item)) as any
-  
-  const clonedObj = {} as { [key: string]: any }
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      clonedObj[key] = deepClone(obj[key])
-    }
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) {
+    return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`
   }
-  
-  return clonedObj as T
-}
 
-// Check if object is empty
-export function isEmpty(obj: any): boolean {
-  if (obj === null || obj === undefined) return true
-  if (typeof obj === 'string' || Array.isArray(obj)) return obj.length === 0
-  if (typeof obj === 'object') return Object.keys(obj).length === 0
-  return false
-}
-
-// Random ID generator
-export function generateId(length: number = 8): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let result = ''
-  
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 30) {
+    return `${diffInDays} day${diffInDays !== 1 ? 's' : ''} ago`
   }
-  
-  return result
+
+  const diffInMonths = Math.floor(diffInDays / 30)
+  if (diffInMonths < 12) {
+    return `${diffInMonths} month${diffInMonths !== 1 ? 's' : ''} ago`
+  }
+
+  const diffInYears = Math.floor(diffInMonths / 12)
+  return `${diffInYears} year${diffInYears !== 1 ? 's' : ''} ago`
 }
