@@ -1,6 +1,6 @@
-import { clsx, type ClassValue } from 'clsx'
+import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem, getTransactionCategoryName, getTransactionCategoryColor } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -13,18 +13,60 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
+export function formatDate(date: string): string {
+  return new Intl.DateFormat('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  })
+  }).format(new Date(date))
 }
 
-export function formatDateForInput(dateString: string): string {
-  return new Date(dateString).toISOString().split('T')[0]
+// Environment variable helpers with proper null handling
+export function getCosmicBucketSlug(): string {
+  const slug = process.env.COSMIC_BUCKET_SLUG
+  if (!slug) {
+    throw new Error('COSMIC_BUCKET_SLUG environment variable is not set')
+  }
+  return slug
 }
 
+export function getCosmicReadKey(): string {
+  const key = process.env.COSMIC_READ_KEY
+  if (!key) {
+    throw new Error('COSMIC_READ_KEY environment variable is not set')
+  }
+  return key
+}
+
+export function getCosmicWriteKey(): string {
+  const key = process.env.COSMIC_WRITE_KEY
+  if (!key) {
+    throw new Error('COSMIC_WRITE_KEY environment variable is not set')
+  }
+  return key
+}
+
+export function getJWTSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not set')
+  }
+  return secret
+}
+
+// Validation functions
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+export function isValidPassword(password: string): boolean {
+  // At least 8 characters, 1 uppercase, 1 lowercase, 1 number
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/
+  return passwordRegex.test(password)
+}
+
+// Utility functions
 export function generateSlug(text: string): string {
   return text
     .toLowerCase()
@@ -33,70 +75,42 @@ export function generateSlug(text: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-// Environment variable getters with proper null checks and validation
-export function getCosmicBucketSlug(): string {
-  const bucketSlug = process.env.COSMIC_BUCKET_SLUG
-  if (!bucketSlug) {
-    throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
-  }
-  return bucketSlug
-}
-
-export function getCosmicReadKey(): string {
-  const readKey = process.env.COSMIC_READ_KEY
-  if (!readKey) {
-    throw new Error('COSMIC_READ_KEY environment variable is required')
-  }
-  return readKey
-}
-
-export function getCosmicWriteKey(): string {
-  const writeKey = process.env.COSMIC_WRITE_KEY
-  if (!writeKey) {
-    throw new Error('COSMIC_WRITE_KEY environment variable is required')
-  }
-  return writeKey
-}
-
-export function calculateCategoryBreakdown(expenses: Transaction[]): CategoryBreakdownItem[] {
-  if (!expenses || expenses.length === 0) {
+export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
+  if (!transactions || transactions.length === 0) {
     return []
   }
 
-  // Group expenses by category
-  const categoryTotals = new Map<string, { name: string; amount: number; color: string }>()
-  let totalExpenses = 0
-
-  expenses.forEach(transaction => {
+  const categoryTotals = new Map<string, { amount: number; color: string; name: string }>()
+  
+  for (const transaction of transactions) {
+    const categoryName = getTransactionCategoryName(transaction)
+    const categoryColor = getTransactionCategoryColor(transaction)
     const amount = Math.abs(transaction.metadata.amount || 0)
-    totalExpenses += amount
-
-    // Safely extract category information
-    let categoryName = 'Unknown Category'
-    let categoryColor = '#999999'
-
-    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
-      categoryName = transaction.metadata.category.metadata.name || categoryName
-      categoryColor = transaction.metadata.category.metadata.color || categoryColor
-    }
-
-    if (categoryTotals.has(categoryName)) {
-      const existing = categoryTotals.get(categoryName)!
+    
+    const existing = categoryTotals.get(categoryName)
+    if (existing) {
       existing.amount += amount
     } else {
       categoryTotals.set(categoryName, {
-        name: categoryName,
         amount,
-        color: categoryColor
+        color: categoryColor,
+        name: categoryName
       })
     }
-  })
+  }
 
-  // Convert to array and add percentages
-  return Array.from(categoryTotals.values()).map(category => ({
-    ...category,
-    percentage: totalExpenses > 0 ? Math.round((category.amount / totalExpenses) * 100) : 0
-  })).sort((a, b) => b.amount - a.amount)
+  const totalAmount = Array.from(categoryTotals.values()).reduce((sum, cat) => sum + cat.amount, 0)
+  
+  if (totalAmount === 0) {
+    return []
+  }
+
+  return Array.from(categoryTotals.entries()).map(([name, data]) => ({
+    name,
+    amount: data.amount,
+    color: data.color,
+    percentage: Math.round((data.amount / totalAmount) * 100)
+  }))
 }
 
 export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
@@ -104,86 +118,29 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
     return []
   }
 
-  // Group transactions by month
   const monthlyTotals = new Map<string, { income: number; expenses: number }>()
-
-  transactions.forEach(transaction => {
-    const date = new Date(transaction.metadata.date || new Date())
-    const monthKey = date.toISOString().slice(0, 7) // YYYY-MM format
-    const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
-    const amount = transaction.metadata.amount || 0
-
-    if (!monthlyTotals.has(monthName)) {
-      monthlyTotals.set(monthName, { income: 0, expenses: 0 })
-    }
-
-    const monthly = monthlyTotals.get(monthName)!
-    if (transaction.metadata.type?.key === 'income') {
-      monthly.income += Math.abs(amount)
-    } else {
-      monthly.expenses += Math.abs(amount)
-    }
-  })
-
-  // Convert to array and calculate net
-  return Array.from(monthlyTotals.entries()).map(([month, data]) => ({
-    month,
-    income: data.income,
-    expenses: data.expenses,
-    net: data.income - data.expenses
-  })).sort((a, b) => a.month.localeCompare(b.month))
-}
-
-export function getTransactionDisplayAmount(transaction: Transaction): number {
-  const amount = transaction.metadata.amount || 0
-  return transaction.metadata.type?.key === 'expense' ? Math.abs(amount) : amount
-}
-
-export function getTransactionTypeColor(type: 'income' | 'expense'): string {
-  return type === 'income' ? 'text-success' : 'text-error'
-}
-
-export function getTransactionTypeBadge(type: 'income' | 'expense'): string {
-  return type === 'income' ? 'badge-success' : 'badge-error'
-}
-
-// JWT secret getter with proper validation
-export function getJWTSecret(): string {
-  const jwtSecret = process.env.JWT_SECRET
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET environment variable is required')
-  }
-  return jwtSecret
-}
-
-// Validation helpers
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-export function isValidPassword(password: string): boolean {
-  return password.length >= 8
-}
-
-// Safe date formatting with fallbacks
-export function formatSafeDate(dateInput: string | Date | undefined | null): string {
-  if (!dateInput) {
-    return formatDate(new Date().toISOString())
-  }
   
-  try {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
-    return formatDate(date.toISOString())
-  } catch {
-    return formatDate(new Date().toISOString())
+  for (const transaction of transactions) {
+    const date = new Date(transaction.metadata.date)
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    
+    const existing = monthlyTotals.get(monthKey) || { income: 0, expenses: 0 }
+    
+    if (transaction.metadata.type?.key === 'income') {
+      existing.income += transaction.metadata.amount || 0
+    } else {
+      existing.expenses += Math.abs(transaction.metadata.amount || 0)
+    }
+    
+    monthlyTotals.set(monthKey, existing)
   }
-}
 
-// Safe currency formatting with fallbacks
-export function formatSafeCurrency(amount: number | undefined | null): string {
-  if (amount === null || amount === undefined || isNaN(amount)) {
-    return formatCurrency(0)
-  }
-  return formatCurrency(amount)
+  return Array.from(monthlyTotals.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, data]) => ({
+      month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      income: data.income,
+      expenses: data.expenses,
+      net: data.income - data.expenses
+    }))
 }

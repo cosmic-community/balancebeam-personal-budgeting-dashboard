@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic } from '@/lib/cosmic'
 import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
-import { validateEmail } from '@/lib/utils'
+import { isValidEmail } from '@/lib/utils'
+import { User } from '@/types'
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,11 +29,11 @@ export async function GET(request: NextRequest) {
     const userResponse = await cosmic.objects.findOne({
       type: 'users',
       id: payload.userId
-    }).props(['id', 'title', 'slug', 'metadata'])
+    })
+    
+    const user = userResponse.object as User
 
-    const user = userResponse.object
-
-    return NextResponse.json({ 
+    return NextResponse.json({
       user: {
         id: user.id,
         email: user.metadata.email,
@@ -74,34 +75,24 @@ export async function PUT(request: NextRequest) {
     const { full_name, email, dark_mode } = body
 
     // Validate input
-    if (full_name && !full_name.trim()) {
-      return NextResponse.json(
-        { error: 'Full name cannot be empty' },
-        { status: 400 }
-      )
-    }
-
-    if (email && !validateEmail(email)) {
+    if (email && !isValidEmail(email)) {
       return NextResponse.json(
         { error: 'Invalid email format' },
         { status: 400 }
       )
     }
 
-    // Build update object with only provided fields
-    const updateData: any = {}
-    
-    if (full_name !== undefined) {
-      updateData.title = full_name.trim()
-      updateData['metadata.full_name'] = full_name.trim()
-    }
-    if (email !== undefined) updateData['metadata.email'] = email
-    if (dark_mode !== undefined) updateData['metadata.dark_mode'] = dark_mode
-
     // Update user
-    const updatedUser = await cosmic.objects.updateOne(payload.userId, updateData)
+    const updateData: any = {}
+    if (full_name) updateData.full_name = full_name
+    if (email) updateData.email = email
+    if (typeof dark_mode === 'boolean') updateData.dark_mode = dark_mode
 
-    return NextResponse.json({ 
+    const updatedUser = await cosmic.objects.updateOne(payload.userId, {
+      metadata: updateData
+    })
+
+    return NextResponse.json({
       user: {
         id: updatedUser.object.id,
         email: updatedUser.object.metadata.email,

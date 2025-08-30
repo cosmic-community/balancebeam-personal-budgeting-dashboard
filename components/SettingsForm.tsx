@@ -1,34 +1,45 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { User } from '@/types'
-import { validateEmail } from '@/lib/utils'
+import { isValidEmail } from '@/lib/utils'
 
 interface SettingsFormProps {
   user: User
 }
 
-export default function SettingsForm({ user }: SettingsFormProps) {
+export default function SettingsForm({ user: initialUser }: SettingsFormProps) {
+  const [user, setUser] = useState(initialUser)
   const [formData, setFormData] = useState({
-    full_name: user.metadata.full_name,
-    email: user.metadata.email
+    full_name: initialUser.metadata.full_name,
+    email: initialUser.metadata.email,
+    dark_mode: initialUser.metadata.dark_mode || false
   })
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [success, setSuccess] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    setMessage(null)
+    setErrors({})
+    setSuccess('')
 
+    // Validation
+    const newErrors: Record<string, string> = {}
+    
     if (!formData.full_name.trim()) {
-      setMessage({ type: 'error', text: 'Full name is required' })
-      setLoading(false)
-      return
+      newErrors.full_name = 'Full name is required'
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!isValidEmail(formData.email)) {
+      newErrors.email = 'Please enter a valid email'
     }
 
-    if (!validateEmail(formData.email)) {
-      setMessage({ type: 'error', text: 'Invalid email format' })
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
       setLoading(false)
       return
     }
@@ -44,15 +55,29 @@ export default function SettingsForm({ user }: SettingsFormProps) {
         body: JSON.stringify(formData)
       })
 
+      const data = await response.json()
+
       if (response.ok) {
-        setMessage({ type: 'success', text: 'Settings updated successfully!' })
+        setSuccess('Settings updated successfully!')
+        // Update user state
+        setUser(prev => ({
+          ...prev,
+          metadata: {
+            ...prev.metadata,
+            ...formData
+          }
+        }))
+
+        // Apply theme change immediately
+        if (formData.dark_mode !== initialUser.metadata.dark_mode) {
+          document.documentElement.classList.toggle('dark', formData.dark_mode)
+        }
       } else {
-        const data = await response.json()
-        setMessage({ type: 'error', text: data.error || 'Failed to update settings' })
+        setErrors({ form: data.error || 'Update failed' })
       }
     } catch (error) {
       console.error('Settings update error:', error)
-      setMessage({ type: 'error', text: 'An unexpected error occurred' })
+      setErrors({ form: 'An error occurred. Please try again.' })
     } finally {
       setLoading(false)
     }
@@ -62,59 +87,82 @@ export default function SettingsForm({ user }: SettingsFormProps) {
     <div className="card">
       <div className="card-header">
         <h3 className="card-title">Account Settings</h3>
-        <p className="card-subtitle">Update your account information</p>
+        <p className="card-subtitle">Update your personal information and preferences</p>
       </div>
       
-      <div className="p-6 pt-0">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="form-label">Full Name</label>
-            <input
-              type="text"
-              value={formData.full_name}
-              onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-              className="form-input"
-              disabled={loading}
-            />
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {errors.form && (
+          <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md text-sm">
+            {errors.form}
           </div>
-
-          <div>
-            <label className="form-label">Email</label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-              className="form-input"
-              disabled={loading}
-            />
+        )}
+        
+        {success && (
+          <div className="bg-success/10 border border-success/20 text-success px-4 py-3 rounded-md text-sm">
+            {success}
           </div>
+        )}
 
-          {message && (
-            <div className={`p-3 rounded-lg border ${
-              message.type === 'success' 
-                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
-                : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
-            }`}>
-              <p className="text-sm">{message.text}</p>
-            </div>
+        <div>
+          <label htmlFor="full_name" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+            Full Name
+          </label>
+          <input
+            id="full_name"
+            type="text"
+            value={formData.full_name}
+            onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
+            className={`w-full px-4 py-3 bg-surface-light dark:bg-surface-dark border rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${
+              errors.full_name ? 'border-error' : 'border-border-light dark:border-border-dark'
+            }`}
+            required
+          />
+          {errors.full_name && (
+            <p className="mt-1 text-sm text-error">{errors.full_name}</p>
           )}
+        </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full btn-primary"
-          >
-            {loading ? (
-              <div className="flex items-center justify-center">
-                <div className="loading-spinner mr-2"></div>
-                Updating...
-              </div>
-            ) : (
-              'Update Settings'
-            )}
-          </button>
-        </form>
-      </div>
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={formData.email}
+            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+            className={`w-full px-4 py-3 bg-surface-light dark:bg-surface-dark border rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${
+              errors.email ? 'border-error' : 'border-border-light dark:border-border-dark'
+            }`}
+            required
+          />
+          {errors.email && (
+            <p className="mt-1 text-sm text-error">{errors.email}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="flex items-center space-x-3">
+            <input
+              type="checkbox"
+              checked={formData.dark_mode}
+              onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
+              className="w-4 h-4 text-primary bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark rounded focus:ring-primary focus:ring-2"
+            />
+            <span className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+              Enable dark mode
+            </span>
+          </label>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? 'Updating...' : 'Update Settings'}
+        </button>
+      </form>
     </div>
   )
 }

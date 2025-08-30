@@ -1,32 +1,32 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/components/AuthProvider'
-import { validateEmail } from '@/lib/utils'
+import { isValidEmail } from '@/lib/utils'
+import { LoginRequest } from '@/types'
 
 export default function LoginForm() {
-  const [formData, setFormData] = useState({
+  const router = useRouter()
+  const [formData, setFormData] = useState<LoginRequest>({
     email: '',
     password: ''
   })
-  const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
-  const { login } = useAuth()
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setErrors({})
     setLoading(true)
+    setErrors({})
 
-    // Validate form
+    // Validation
     const newErrors: Record<string, string> = {}
     
     if (!formData.email) {
       newErrors.email = 'Email is required'
-    } else if (!validateEmail(formData.email)) {
-      newErrors.email = 'Invalid email format'
+    } else if (!isValidEmail(formData.email)) {
+      newErrors.email = 'Please enter a valid email'
     }
     
     if (!formData.password) {
@@ -51,14 +51,19 @@ export default function LoginForm() {
       const data = await response.json()
 
       if (response.ok) {
-        await login(data.token)
+        // Store token
+        localStorage.setItem('auth-token', data.token)
+        
+        // Set cookie for SSR
+        document.cookie = `auth-token=${data.token}; path=/; max-age=86400; SameSite=Lax`
+        
         router.push('/dashboard')
       } else {
-        setErrors({ submit: data.error || 'Login failed' })
+        setErrors({ form: data.error || 'Login failed' })
       }
     } catch (error) {
       console.error('Login error:', error)
-      setErrors({ submit: 'An unexpected error occurred' })
+      setErrors({ form: 'An error occurred. Please try again.' })
     } finally {
       setLoading(false)
     }
@@ -66,52 +71,68 @@ export default function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {errors.form && (
+        <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md text-sm">
+          {errors.form}
+        </div>
+      )}
+
       <div>
-        <label className="form-label">Email</label>
+        <label htmlFor="email" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+          Email
+        </label>
         <input
+          id="email"
           type="email"
           value={formData.email}
           onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-          className="form-input"
+          className={`w-full px-4 py-3 bg-surface-light dark:bg-surface-dark border rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${
+            errors.email ? 'border-error' : 'border-border-light dark:border-border-dark'
+          }`}
           placeholder="Enter your email"
-          disabled={loading}
+          required
         />
-        {errors.email && <p className="form-error">{errors.email}</p>}
+        {errors.email && (
+          <p className="mt-1 text-sm text-error">{errors.email}</p>
+        )}
       </div>
 
       <div>
-        <label className="form-label">Password</label>
+        <label htmlFor="password" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-2">
+          Password
+        </label>
         <input
+          id="password"
           type="password"
           value={formData.password}
           onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-          className="form-input"
+          className={`w-full px-4 py-3 bg-surface-light dark:bg-surface-dark border rounded-md focus:outline-none focus:ring-2 focus:ring-primary ${
+            errors.password ? 'border-error' : 'border-border-light dark:border-border-dark'
+          }`}
           placeholder="Enter your password"
-          disabled={loading}
+          required
         />
-        {errors.password && <p className="form-error">{errors.password}</p>}
+        {errors.password && (
+          <p className="mt-1 text-sm text-error">{errors.password}</p>
+        )}
       </div>
-
-      {errors.submit && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p className="text-red-600 dark:text-red-400 text-sm">{errors.submit}</p>
-        </div>
-      )}
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full btn-primary"
+        className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {loading ? (
-          <div className="flex items-center justify-center">
-            <div className="loading-spinner mr-2"></div>
-            Signing in...
-          </div>
-        ) : (
-          'Sign In'
-        )}
+        {loading ? 'Signing in...' : 'Sign in'}
       </button>
+
+      <div className="text-center">
+        <p className="text-text-secondary-light dark:text-text-secondary-dark">
+          Don't have an account?{' '}
+          <Link href="/signup" className="text-primary hover:text-primary-dark font-medium">
+            Sign up
+          </Link>
+        </p>
+      </div>
     </form>
   )
 }
