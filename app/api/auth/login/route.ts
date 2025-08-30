@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { signJWT } from '@/lib/auth'
+import { signJWT, verifyPassword } from '@/lib/auth'
 import { User, LoginRequest } from '@/types'
 
 export async function POST(request: NextRequest) {
@@ -18,34 +17,45 @@ export async function POST(request: NextRequest) {
     }
 
     // Find user by email
-    let user: User
+    let userResponse
     try {
-      const userResponse = await cosmic.objects.findOne({
-        type: 'users',
-        'metadata.email': email.toLowerCase()
-      }).props(['id', 'title', 'metadata'])
-
-      user = userResponse.object as User
+      userResponse = await cosmic.objects
+        .find({ 
+          type: 'users',
+          'metadata.email': email 
+        })
+        .props(['id', 'title', 'slug', 'metadata'])
+        .limit(1)
     } catch (error) {
-      if (hasStatus(error) && error.status === 404) {
-        return NextResponse.json(
-          { error: 'Invalid email or password' },
-          { status: 401 }
-        )
-      }
-      throw error
-    }
-
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.metadata.password_hash)
-    if (!isPasswordValid) {
+      console.error('User lookup error:', error)
       return NextResponse.json(
-        { error: 'Invalid email or password' },
+        { error: 'Invalid credentials' },
         { status: 401 }
       )
     }
 
-    // Create JWT token
+    // Check if user exists
+    if (!userResponse.objects || userResponse.objects.length === 0) {
+      console.log('User not found for email:', email)
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    const user = userResponse.objects[0] as User
+
+    // Verify password
+    const isValidPassword = await verifyPassword(password, user.metadata.password_hash)
+    if (!isValidPassword) {
+      console.log('Invalid password for user:', email)
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    // Generate JWT
     const token = await signJWT({
       userId: user.id,
       email: user.metadata.email
@@ -53,23 +63,21 @@ export async function POST(request: NextRequest) {
 
     // Create response with token
     const response = NextResponse.json({
-      success: true,
-      token,
       user: {
         id: user.id,
         email: user.metadata.email,
         full_name: user.metadata.full_name,
         dark_mode: user.metadata.dark_mode || false
-      }
+      },
+      token
     })
 
-    // Set HTTP-only cookie
+    // Set httpOnly cookie
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-      path: '/'
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7 // 7 days
     })
 
     return response
