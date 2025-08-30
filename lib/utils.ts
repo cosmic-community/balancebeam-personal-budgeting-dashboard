@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from './types'
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '../types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -43,6 +43,11 @@ export function formatDate(dateString: string): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+export function formatDateForInput(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date
+  return dateObj.toISOString().split('T')[0]
 }
 
 export function generateSlug(text: string): string {
@@ -92,7 +97,7 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
   const monthlyTotals: { [key: string]: { income: number; expenses: number } } = {}
 
   transactions.forEach((transaction) => {
-    const date = new Date(transaction.metadata.date)
+    const date = new Date(transaction.metadata.date || transaction.created_at)
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     
     if (!monthlyTotals[monthKey]) {
@@ -111,7 +116,10 @@ export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataIt
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([monthKey, data]) => {
       const [year, month] = monthKey.split('-')
-      const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-US', { month: 'short' })
+      // Handle potential undefined values with fallback
+      const yearNum = year ? parseInt(year) : new Date().getFullYear()
+      const monthNum = month ? parseInt(month) - 1 : 0
+      const monthName = new Date(yearNum, monthNum).toLocaleDateString('en-US', { month: 'short' })
       
       return {
         month: monthName,
