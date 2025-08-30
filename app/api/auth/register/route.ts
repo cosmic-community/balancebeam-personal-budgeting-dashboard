@@ -3,100 +3,99 @@ import bcrypt from 'bcryptjs'
 import { cosmic, hasStatus } from '@/lib/cosmic'
 import { signJWT } from '@/lib/auth'
 import { generateSlug } from '@/lib/utils'
-import { User } from '@/types'
-
-interface RegisterRequestBody {
-  full_name: string
-  email: string
-  password: string
-}
+import { RegisterRequest } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
-    const body: RegisterRequestBody = await request.json()
-    const { full_name, email, password } = body
+    const body: RegisterRequest = await request.json()
+    const { full_name, email, password, confirmPassword } = body
 
     // Validate input
-    if (!full_name || !email || !password) {
+    if (!full_name || !email || !password || !confirmPassword) {
       return NextResponse.json(
         { error: 'All fields are required' },
         { status: 400 }
       )
     }
 
-    if (password.length < 6) {
+    if (password !== confirmPassword) {
       return NextResponse.json(
-        { error: 'Password must be at least 6 characters long' },
+        { error: 'Passwords do not match' },
         { status: 400 }
       )
     }
 
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'Password must be at least 6 characters' },
+        { status: 400 }
+      )
+    }
+
+    const emailLower = email.toLowerCase()
+
     // Check if user already exists
     try {
-      const existingUserResponse = await cosmic.objects.find({
+      await cosmic.objects.findOne({
         type: 'users',
-        'metadata.email': email.toLowerCase()
-      }).props(['id', 'metadata'])
-
-      if (existingUserResponse.objects.length > 0) {
-        return NextResponse.json(
-          { error: 'User with this email already exists' },
-          { status: 409 }
-        )
-      }
+        'metadata.email': emailLower
+      })
+      
+      // If we reach here, user exists
+      return NextResponse.json(
+        { error: 'User with this email already exists' },
+        { status: 400 }
+      )
     } catch (error) {
-      // If 404, user doesn't exist, which is what we want
+      // 404 is expected - user doesn't exist, so we can proceed
       if (!hasStatus(error) || error.status !== 404) {
-        console.error('Error checking existing user:', error)
-        return NextResponse.json(
-          { error: 'Internal server error' },
-          { status: 500 }
-        )
+        throw error
       }
     }
 
     // Hash password
-    const passwordHash = await bcrypt.hash(password, 12)
+    const salt = await bcrypt.genSalt(12)
+    const passwordHash = await bcrypt.hash(password, salt)
 
     // Create user
     const newUser = await cosmic.objects.insertOne({
       type: 'users',
       title: full_name,
-      slug: generateSlug(full_name + '-' + Date.now()),
+      slug: generateSlug(`${full_name}-${Date.now()}`),
       metadata: {
         full_name,
-        email: email.toLowerCase(),
+        email: emailLower,
         password_hash: passwordHash,
         dark_mode: false,
-        created_at: new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+        created_at: new Date().toISOString().split('T')[0]
       }
     })
 
-    const user = newUser.object as User
-
-    // Generate JWT token
+    // Create JWT token
     const token = await signJWT({
-      userId: user.id,
-      email: user.metadata.email
+      userId: newUser.object.id,
+      email: emailLower
     })
 
-    // Set cookie
+    // Create response with token
     const response = NextResponse.json({
       success: true,
       token,
       user: {
-        id: user.id,
-        email: user.metadata.email,
-        full_name: user.metadata.full_name,
-        dark_mode: user.metadata.dark_mode
+        id: newUser.object.id,
+        email: emailLower,
+        full_name,
+        dark_mode: false
       }
     })
 
+    // Set HTTP-only cookie
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 // 7 days
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+      path: '/'
     })
 
     return response

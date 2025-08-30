@@ -2,17 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { LoginRequest } from '@/types'
 
 export default function LoginForm() {
-  const [formData, setFormData] = useState<LoginRequest>({
+  const router = useRouter()
+  const [formData, setFormData] = useState({
     email: '',
     password: ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,11 +29,11 @@ export default function LoginForm() {
       const data = await response.json()
 
       if (response.ok) {
-        // Store the JWT token in localStorage
+        // Store the token
         localStorage.setItem('auth-token', data.token)
         
-        // Set cookie for server-side authentication
-        document.cookie = `auth-token=${data.token}; path=/; max-age=${7 * 24 * 60 * 60}; SameSite=Lax`
+        // Set cookie for SSR
+        document.cookie = `auth-token=${data.token}; path=/; max-age=2592000; SameSite=Strict`
         
         // Redirect to dashboard
         router.push('/dashboard')
@@ -51,67 +49,68 @@ export default function LoginForm() {
     }
   }
 
-  return (
-    <div className="card max-w-md mx-auto">
-      <div className="card-header text-center">
-        <h2 className="card-title">Welcome Back</h2>
-        <p className="card-subtitle">Sign in to your BalanceBeam account</p>
-      </div>
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }))
+  }
 
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md text-sm mb-4">
-          {error}
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-            Email Address
-          </label>
-          <input
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:ring-2 focus:ring-primary focus:border-primary"
-            placeholder="Enter your email"
-            required
-            disabled={loading}
-          />
-        </div>
+      <div>
+        <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Email Address
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          required
+          value={formData.email}
+          onChange={handleChange}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+          placeholder="Enter your email"
+        />
+      </div>
 
-        <div>
-          <label className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
-            Password
-          </label>
-          <input
-            type="password"
-            value={formData.password}
-            onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-            className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:ring-2 focus:ring-primary focus:border-primary"
-            placeholder="Enter your password"
-            required
-            disabled={loading}
-          />
-        </div>
+      <div>
+        <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          value={formData.password}
+          onChange={handleChange}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+          placeholder="Enter your password"
+        />
+      </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full btn-primary"
-        >
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-
-        <div className="text-center">
-          <p className="text-text-secondary-light dark:text-text-secondary-dark text-sm">
-            Don't have an account?{' '}
-            <Link href="/signup" className="text-primary hover:text-primary-dark font-medium">
-              Sign up here
-            </Link>
-          </p>
-        </div>
-      </form>
-    </div>
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+      >
+        {loading ? (
+          <div className="flex items-center justify-center space-x-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            <span>Signing in...</span>
+          </div>
+        ) : (
+          'Sign In'
+        )}
+      </button>
+    </form>
   )
 }

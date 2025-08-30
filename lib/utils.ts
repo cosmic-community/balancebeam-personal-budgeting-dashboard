@@ -1,38 +1,9 @@
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(amount)
-}
-
-export function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
-}
-
-export function formatDateForInput(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-export function generateSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w ]+/g, '')
-    .replace(/ +/g, '-')
-}
+import { Transaction, CategoryBreakdownItem, MonthlyDataItem } from '@/types'
 
 export function getCosmicBucketSlug(): string {
   const slug = process.env.COSMIC_BUCKET_SLUG
   if (!slug) {
-    throw new Error('COSMIC_BUCKET_SLUG environment variable is not set')
+    throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
   }
   return slug
 }
@@ -40,7 +11,7 @@ export function getCosmicBucketSlug(): string {
 export function getCosmicReadKey(): string {
   const key = process.env.COSMIC_READ_KEY
   if (!key) {
-    throw new Error('COSMIC_READ_KEY environment variable is not set')
+    throw new Error('COSMIC_READ_KEY environment variable is required')
   }
   return key
 }
@@ -48,72 +19,103 @@ export function getCosmicReadKey(): string {
 export function getCosmicWriteKey(): string {
   const key = process.env.COSMIC_WRITE_KEY
   if (!key) {
-    throw new Error('COSMIC_WRITE_KEY environment variable is not set')
+    throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
   return key
 }
 
-export function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
+export function generateSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
 }
 
-// Dashboard calculation utilities
-export function calculateCategoryBreakdown(transactions: any[]): any[] {
-  const categoryTotals: Record<string, { amount: number; color: string; name: string }> = {}
-  
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(amount)
+}
+
+export function formatDate(date: string): string {
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+export function calculateCategoryBreakdown(transactions: Transaction[]): CategoryBreakdownItem[] {
+  const categoryMap = new Map<string, { amount: number; color: string; name: string }>()
+
   transactions.forEach(transaction => {
-    const categoryName = typeof transaction.metadata.category === 'object' 
-      ? transaction.metadata.category?.metadata?.name 
-      : 'Unknown'
-    const categoryColor = typeof transaction.metadata.category === 'object' 
-      ? transaction.metadata.category?.metadata?.color 
-      : '#999999'
-    const amount = Math.abs(transaction.metadata.amount || 0)
-    
-    if (categoryTotals[categoryName]) {
-      categoryTotals[categoryName].amount += amount
-    } else {
-      categoryTotals[categoryName] = {
-        amount,
-        color: categoryColor,
-        name: categoryName
+    if (typeof transaction.metadata.category === 'object' && transaction.metadata.category?.metadata) {
+      const categoryName = transaction.metadata.category.metadata.name
+      const categoryColor = transaction.metadata.category.metadata.color
+      const amount = Math.abs(transaction.metadata.amount || 0)
+
+      if (categoryMap.has(categoryName)) {
+        categoryMap.get(categoryName)!.amount += amount
+      } else {
+        categoryMap.set(categoryName, {
+          amount,
+          color: categoryColor,
+          name: categoryName
+        })
       }
     }
   })
-  
-  const totalExpenses = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.amount, 0)
-  
-  return Object.values(categoryTotals).map(category => ({
-    ...category,
-    percentage: totalExpenses > 0 ? (category.amount / totalExpenses) * 100 : 0
+
+  const total = Array.from(categoryMap.values()).reduce((sum, cat) => sum + cat.amount, 0)
+
+  return Array.from(categoryMap.entries()).map(([name, data]) => ({
+    name,
+    amount: data.amount,
+    color: data.color,
+    percentage: total > 0 ? (data.amount / total) * 100 : 0
   }))
 }
 
-export function calculateMonthlyData(transactions: any[]): any[] {
-  const monthlyTotals: Record<string, { income: number; expenses: number }> = {}
-  
+export function calculateMonthlyData(transactions: Transaction[]): MonthlyDataItem[] {
+  const monthlyMap = new Map<string, { income: number; expenses: number }>()
+
   transactions.forEach(transaction => {
     const date = new Date(transaction.metadata.date)
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    
-    if (!monthlyTotals[monthKey]) {
-      monthlyTotals[monthKey] = { income: 0, expenses: 0 }
-    }
-    
     const amount = transaction.metadata.amount || 0
+
+    if (!monthlyMap.has(monthKey)) {
+      monthlyMap.set(monthKey, { income: 0, expenses: 0 })
+    }
+
+    const monthData = monthlyMap.get(monthKey)!
     if (transaction.metadata.type?.key === 'income') {
-      monthlyTotals[monthKey].income += amount
+      monthData.income += amount
     } else {
-      monthlyTotals[monthKey].expenses += Math.abs(amount)
+      monthData.expenses += Math.abs(amount)
     }
   })
+
+  // Get last 6 months
+  const result: MonthlyDataItem[] = []
+  const now = new Date()
   
-  return Object.entries(monthlyTotals)
-    .map(([month, data]) => ({
-      month,
-      ...data,
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    const monthName = date.toLocaleDateString('en-US', { month: 'short' })
+    
+    const data = monthlyMap.get(monthKey) || { income: 0, expenses: 0 }
+    result.push({
+      month: monthName,
+      income: data.income,
+      expenses: data.expenses,
       net: data.income - data.expenses
-    }))
-    .sort((a, b) => a.month.localeCompare(b.month))
+    })
+  }
+
+  return result
 }

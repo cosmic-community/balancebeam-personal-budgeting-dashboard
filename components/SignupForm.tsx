@@ -2,33 +2,26 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { RegisterRequest } from '@/types'
 
 export default function SignupForm() {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [formData, setFormData] = useState<RegisterRequest>({
+  const [formData, setFormData] = useState({
     full_name: '',
     email: '',
     password: '',
     confirmPassword: ''
   })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
     setLoading(true)
+    setError('')
 
-    // Client-side validation
+    // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
-      setLoading(false)
-      return
-    }
-
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long')
       setLoading(false)
       return
     }
@@ -37,21 +30,23 @@ export default function SignupForm() {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          full_name: formData.full_name,
-          email: formData.email,
-          password: formData.password
-        }),
+        body: JSON.stringify(formData)
       })
 
       const data = await response.json()
 
       if (response.ok) {
-        // Store token and redirect
+        // Store the token
         localStorage.setItem('auth-token', data.token)
+        
+        // Set cookie for SSR
+        document.cookie = `auth-token=${data.token}; path=/; max-age=2592000; SameSite=Strict`
+        
+        // Redirect to dashboard
         router.push('/dashboard')
+        router.refresh()
       } else {
         setError(data.error || 'Registration failed')
       }
@@ -63,83 +58,82 @@ export default function SignupForm() {
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-    // Clear error when user starts typing
-    if (error) setError(null)
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }))
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded-md text-sm">
-          {error}
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
         </div>
       )}
 
       <div>
-        <label htmlFor="full_name" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+        <label htmlFor="full_name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Full Name
         </label>
         <input
           id="full_name"
           name="full_name"
           type="text"
-          value={formData.full_name}
-          onChange={handleInputChange}
           required
-          className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          value={formData.full_name}
+          onChange={handleChange}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
           placeholder="Enter your full name"
         />
       </div>
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+        <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Email Address
         </label>
         <input
           id="email"
           name="email"
           type="email"
-          value={formData.email}
-          onChange={handleInputChange}
           required
-          className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          value={formData.email}
+          onChange={handleChange}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
           placeholder="Enter your email"
         />
       </div>
 
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+        <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Password
         </label>
         <input
           id="password"
           name="password"
           type="password"
-          value={formData.password}
-          onChange={handleInputChange}
           required
-          minLength={6}
-          className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-          placeholder="Create a password (min 6 characters)"
+          value={formData.password}
+          onChange={handleChange}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+          placeholder="Enter your password"
         />
       </div>
 
       <div>
-        <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+        <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Confirm Password
         </label>
         <input
           id="confirmPassword"
           name="confirmPassword"
           type="password"
-          value={formData.confirmPassword}
-          onChange={handleInputChange}
           required
-          minLength={6}
-          className="w-full px-3 py-2 bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
           placeholder="Confirm your password"
         />
       </div>
@@ -147,9 +141,16 @@ export default function SignupForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full btn-primary py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
       >
-        {loading ? 'Creating Account...' : 'Create Account'}
+        {loading ? (
+          <div className="flex items-center justify-center space-x-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            <span>Creating account...</span>
+          </div>
+        ) : (
+          'Create Account'
+        )}
       </button>
     </form>
   )
