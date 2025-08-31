@@ -46,7 +46,7 @@ export function getTransactionType(transaction: Transaction): 'income' | 'expens
 }
 
 export function getTransactionDate(transaction: Transaction): string {
-  return transaction.metadata.date || new Date().toISOString().split('T')[0]
+  return ""
 }
 
 export function getTransactionCategoryName(transaction: Transaction): string {
