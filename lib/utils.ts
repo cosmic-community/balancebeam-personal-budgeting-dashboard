@@ -63,10 +63,10 @@ export function getTransactionCategoryColor(transaction: Transaction): string {
   return '#999999'
 }
 
-// FIXED: Properly handle undefined environment variables with explicit null checks
+// FIXED: Properly handle undefined environment variables with explicit validation and safe return
 export function getCosmicBucketSlug(): string {
   const bucketSlug = process.env.COSMIC_BUCKET_SLUG
-  if (!bucketSlug) {
+  if (!bucketSlug || bucketSlug.trim() === '') {
     throw new Error('COSMIC_BUCKET_SLUG environment variable is required')
   }
   return bucketSlug
@@ -74,7 +74,7 @@ export function getCosmicBucketSlug(): string {
 
 export function getCosmicReadKey(): string {
   const readKey = process.env.COSMIC_READ_KEY
-  if (!readKey) {
+  if (!readKey || readKey.trim() === '') {
     throw new Error('COSMIC_READ_KEY environment variable is required')
   }
   return readKey
@@ -82,7 +82,7 @@ export function getCosmicReadKey(): string {
 
 export function getCosmicWriteKey(): string {
   const writeKey = process.env.COSMIC_WRITE_KEY
-  if (!writeKey) {
+  if (!writeKey || writeKey.trim() === '') {
     throw new Error('COSMIC_WRITE_KEY environment variable is required')
   }
   return writeKey
