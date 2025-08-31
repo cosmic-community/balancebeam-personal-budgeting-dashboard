@@ -32,8 +32,8 @@ export default function LoginForm() {
         localStorage.setItem('auth-token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
         
-        // Redirect to dashboard
-        router.push('/dashboard')
+        // Force a page refresh to ensure clean state, then redirect
+        window.location.href = '/dashboard'
       } else {
         setError(data.error || 'Login failed. Please try again.')
       }
