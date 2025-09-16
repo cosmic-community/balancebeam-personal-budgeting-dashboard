@@ -1,36 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cosmic } from '@/lib/cosmic'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
-import bcrypt from 'bcryptjs'
+import { verifyToken } from '@/lib/auth'
+import { cosmic, hasStatus } from '@/lib/cosmic'
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
     
     if (!token) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Authorization token required' },
         { status: 401 }
       )
     }
 
-    const payload = await verifyJWT(token)
+    const payload = await verifyToken(token)
     if (!payload) {
       return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: 'Invalid or expired token' },
         { status: 401 }
       )
     }
 
-    // Get user data
-    const userResponse = await cosmic.objects.findOne({
-      type: 'users',
-      id: payload.userId
-    })
+    // Get user from Cosmic
+    const userResponse = await cosmic.objects
+      .findOne({
+        type: 'users',
+        id: payload.userId
+      })
+      .props(['id', 'title', 'slug', 'metadata'])
+
+    if (!userResponse.object) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
 
     const user = userResponse.object
-
+    
     return NextResponse.json({
       user: {
         id: user.id,
@@ -41,6 +48,14 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('User fetch error:', error)
+    
+    if (hasStatus(error) && error.status === 404) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -50,38 +65,31 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
     
     if (!token) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Authorization token required' },
         { status: 401 }
       )
     }
 
-    const payload = await verifyJWT(token)
+    const payload = await verifyToken(token)
     if (!payload) {
       return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: 'Invalid or expired token' },
         { status: 401 }
       )
     }
 
     const body = await request.json()
-    const { full_name, email, dark_mode } = body
+    const { full_name, dark_mode } = body
 
-    // Build update object with only provided fields
+    // Update user in Cosmic
     const updateData: any = {}
-    
-    if (full_name) {
-      updateData.title = full_name
-      updateData['metadata.full_name'] = full_name
-    }
-    if (email) updateData['metadata.email'] = email
+    if (full_name !== undefined) updateData['metadata.full_name'] = full_name
     if (dark_mode !== undefined) updateData['metadata.dark_mode'] = dark_mode
 
-    // Update user
     const updatedUser = await cosmic.objects.updateOne(payload.userId, updateData)
 
     return NextResponse.json({

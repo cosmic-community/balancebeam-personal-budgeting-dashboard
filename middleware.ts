@@ -1,40 +1,45 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { isAuthenticated } from '@/lib/auth'
+import { verifyToken } from '@/lib/auth'
 
-export function middleware(request: NextRequest) {
-  // Check if the request is for a protected route
-  const protectedPaths = ['/dashboard']
-  const pathname = request.nextUrl.pathname
+export async function middleware(request: NextRequest) {
+  // Check if the path starts with /dashboard
+  if (request.nextUrl.pathname.startsWith('/dashboard')) {
+    const token = request.cookies.get('auth-token')?.value
 
-  // Check if the current path starts with any protected path
-  const isProtectedRoute = protectedPaths.some(path => 
-    pathname.startsWith(path)
-  )
+    if (!token) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
 
-  if (isProtectedRoute) {
-    // Check authentication
-    if (!isAuthenticated(request)) {
-      // Redirect to login page
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(loginUrl)
+    try {
+      const payload = await verifyToken(token)
+      if (!payload) {
+        return NextResponse.redirect(new URL('/login', request.url))
+      }
+    } catch (error) {
+      return NextResponse.redirect(new URL('/login', request.url))
     }
   }
 
-  // Continue with the request
+  // Redirect authenticated users away from login/signup pages
+  if (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup') {
+    const token = request.cookies.get('auth-token')?.value
+
+    if (token) {
+      try {
+        const payload = await verifyToken(token)
+        if (payload) {
+          return NextResponse.redirect(new URL('/dashboard', request.url))
+        }
+      } catch (error) {
+        // Token is invalid, allow access to login/signup
+      }
+    }
+  }
+
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes - they handle their own auth)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/dashboard/:path*', '/login', '/signup']
 }

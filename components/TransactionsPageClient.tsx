@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import TransactionForm from '@/components/TransactionForm'
+import TransactionsList from '@/components/TransactionsList'
 import { Transaction, Category } from '@/types'
-import TransactionForm from './TransactionForm'
-import TransactionsList from './TransactionsList'
 
-interface TransactionsPageClientProps {
+export interface TransactionsPageClientProps {
   initialTransactions: Transaction[]
   categories: Category[]
 }
@@ -17,8 +17,7 @@ export default function TransactionsPageClient({
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
 
-  const handleTransactionSuccess = async () => {
-    // Refresh transactions from the server
+  const refreshTransactions = async () => {
     try {
       const token = localStorage.getItem('auth-token')
       const response = await fetch('/api/transactions', {
@@ -34,8 +33,10 @@ export default function TransactionsPageClient({
     } catch (error) {
       console.error('Failed to refresh transactions:', error)
     }
+  }
 
-    // Clear editing state
+  const handleTransactionSuccess = () => {
+    refreshTransactions()
     setEditingTransaction(null)
   }
 
@@ -67,18 +68,22 @@ export default function TransactionsPageClient({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-grid-gap">
-      {/* Transaction Form */}
-      <div className="lg:col-span-1">
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary-light dark:text-text-primary-dark">
+          Transactions
+        </h1>
+        <p className="text-text-secondary-light dark:text-text-secondary-dark">
+          Manage your income and expenses
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <TransactionForm 
-          categories={categories}
+          categories={categories} 
           onSuccess={handleTransactionSuccess}
           editTransaction={editingTransaction}
         />
-      </div>
-
-      {/* Transactions List */}
-      <div className="lg:col-span-2">
         <TransactionsList 
           transactions={transactions}
           onEdit={handleEdit}
