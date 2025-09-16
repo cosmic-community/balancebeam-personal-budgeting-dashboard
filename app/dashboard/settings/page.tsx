@@ -1,35 +1,35 @@
-import { redirect } from 'next/navigation'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, userToAuthUser } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { Category, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
-import CategoryManager from '@/components/CategoryManager'
 import SettingsForm from '@/components/SettingsForm'
+import CategoryManager from '@/components/CategoryManager'
 
 async function getSettingsData() {
   try {
-    const authUser = await getCurrentUser()
-    
+    // Get auth token from cookies
+    const cookieStore = await cookies()
+    const token = cookieStore.get('auth-token')?.value
+
+    if (!token) {
+      redirect('/login')
+    }
+
+    // Get current user
+    const authUser = await getCurrentUser(token)
     if (!authUser) {
       redirect('/login')
     }
 
-    // Create User object from AuthUser
-    const user: User = {
-      id: authUser.id,
-      slug: `user-${authUser.id}`,
-      title: authUser.full_name,
+    // Get full user object for DashboardLayout
+    const userResponse = await cosmic.objects.findOne({
       type: 'users',
-      created_at: new Date().toISOString(),
-      modified_at: new Date().toISOString(),
-      metadata: {
-        full_name: authUser.full_name,
-        email: authUser.email,
-        password_hash: '',
-        dark_mode: authUser.dark_mode,
-        created_at: '2025-01-01'
-      }
-    }
+      id: authUser.id
+    }).props(['id', 'title', 'slug', 'metadata'])
+
+    const user = userResponse.object as User
 
     // Get user's categories
     const categoriesResponse = await cosmic.objects
@@ -38,41 +38,19 @@ async function getSettingsData() {
         'metadata.user': authUser.id 
       })
       .props(['id', 'title', 'slug', 'metadata'])
-      .depth(1)
-    
+
     const categories = categoriesResponse.objects as Category[]
 
     return {
       user,
+      authUser,
       categories
     }
   } catch (error) {
     if (hasStatus(error) && error.status === 404) {
-      const authUser = await getCurrentUser()
-      
-      if (!authUser) {
-        redirect('/login')
-      }
-
-      // Create User object from AuthUser
-      const user: User = {
-        id: authUser.id,
-        slug: `user-${authUser.id}`,
-        title: authUser.full_name,
-        type: 'users',
-        created_at: new Date().toISOString(),
-        modified_at: new Date().toISOString(),
-        metadata: {
-          full_name: authUser.full_name,
-          email: authUser.email,
-          password_hash: '',
-          dark_mode: authUser.dark_mode,
-          created_at: '2025-01-01'
-        }
-      }
-
       return {
-        user,
+        user: null,
+        authUser: null,
         categories: []
       }
     }
@@ -81,26 +59,32 @@ async function getSettingsData() {
 }
 
 export default async function SettingsPage() {
-  const data = await getSettingsData()
+  const { user, authUser, categories } = await getSettingsData()
+
+  if (!user || !authUser) {
+    redirect('/login')
+  }
 
   return (
-    <DashboardLayout user={data.user}>
+    <DashboardLayout user={user}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
         <div>
           <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
-            Settings
+            Account Settings
           </h1>
           <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Manage your account and preferences
+            Manage your account preferences and categories
           </p>
         </div>
 
-        {/* Settings Form */}
-        <SettingsForm user={data.user} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-grid-gap">
+          {/* Settings Form */}
+          <SettingsForm user={authUser} />
 
-        {/* Category Management */}
-        <CategoryManager categories={data.categories} />
+          {/* Category Manager */}
+          <CategoryManager categories={categories} />
+        </div>
       </div>
     </DashboardLayout>
   )

@@ -1,35 +1,34 @@
-import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { Transaction, Category, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
-import TransactionForm from '@/components/TransactionForm'
-import TransactionsList from '@/components/TransactionsList'
+import TransactionsPageClient from '@/components/TransactionsPageClient'
 
 async function getTransactionsData() {
   try {
-    const authUser = await getCurrentUser()
-    
+    // Get auth token from cookies
+    const cookieStore = await cookies()
+    const token = cookieStore.get('auth-token')?.value
+
+    if (!token) {
+      redirect('/login')
+    }
+
+    // Get current user
+    const authUser = await getCurrentUser(token)
     if (!authUser) {
       redirect('/login')
     }
 
-    // Create User object from AuthUser
-    const user: User = {
-      id: authUser.id,
-      slug: `user-${authUser.id}`,
-      title: authUser.full_name,
+    // Get full user object for DashboardLayout
+    const userResponse = await cosmic.objects.findOne({
       type: 'users',
-      created_at: new Date().toISOString(),
-      modified_at: new Date().toISOString(),
-      metadata: {
-        full_name: authUser.full_name,
-        email: authUser.email,
-        password_hash: '',
-        dark_mode: authUser.dark_mode,
-        created_at: '2025-01-01'
-      }
-    }
+      id: authUser.id
+    }).props(['id', 'title', 'slug', 'metadata'])
+
+    const user = userResponse.object as User
 
     // Get user's transactions with category data
     const transactionsResponse = await cosmic.objects
@@ -39,17 +38,17 @@ async function getTransactionsData() {
       })
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
-    
+
     const transactions = transactionsResponse.objects as Transaction[]
 
-    // Get user's categories  
+    // Get user's categories
     const categoriesResponse = await cosmic.objects
       .find({ 
         type: 'categories',
         'metadata.user': authUser.id 
       })
       .props(['id', 'title', 'slug', 'metadata'])
-    
+
     const categories = categoriesResponse.objects as Category[]
 
     return {
@@ -59,31 +58,8 @@ async function getTransactionsData() {
     }
   } catch (error) {
     if (hasStatus(error) && error.status === 404) {
-      const authUser = await getCurrentUser()
-      
-      if (!authUser) {
-        redirect('/login')
-      }
-
-      // Create User object from AuthUser
-      const user: User = {
-        id: authUser.id,
-        slug: `user-${authUser.id}`,
-        title: authUser.full_name,
-        type: 'users',
-        created_at: new Date().toISOString(),
-        modified_at: new Date().toISOString(),
-        metadata: {
-          full_name: authUser.full_name,
-          email: authUser.email,
-          password_hash: '',
-          dark_mode: authUser.dark_mode,
-          created_at: '2025-01-01'
-        }
-      }
-
       return {
-        user,
+        user: null,
         transactions: [],
         categories: []
       }
@@ -93,10 +69,14 @@ async function getTransactionsData() {
 }
 
 export default async function TransactionsPage() {
-  const data = await getTransactionsData()
+  const { user, transactions, categories } = await getTransactionsData()
+
+  if (!user) {
+    redirect('/login')
+  }
 
   return (
-    <DashboardLayout user={data.user}>
+    <DashboardLayout user={user}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
         <div>
@@ -104,17 +84,14 @@ export default async function TransactionsPage() {
             Transactions
           </h1>
           <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Add new transactions and view your transaction history
+            Manage your income and expense transactions
           </p>
         </div>
 
-        {/* Transaction Form */}
-        <TransactionForm categories={data.categories} />
-
-        {/* Transactions List */}
-        <TransactionsList 
-          transactions={data.transactions}
-          categories={data.categories}
+        {/* Client-side transaction management */}
+        <TransactionsPageClient 
+          initialTransactions={transactions}
+          categories={categories}
         />
       </div>
     </DashboardLayout>
