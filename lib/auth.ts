@@ -1,137 +1,165 @@
-import { SignJWT, jwtVerify } from 'jose'
-import { cookies } from 'next/headers'
-import { NextRequest } from 'next/server'
-import { cosmic, hasStatus } from './cosmic'
-import { User, JWTPayload } from '@/types'
 import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
+import { JWTPayload, AuthUser } from '@/types'
+import { cosmic } from './cosmic'
 
-// JWT secret key
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production'
-)
+const JWT_SECRET = process.env.JWT_SECRET || 'your-fallback-secret-key'
 
-// Sign JWT token
-export async function signJWT(payload: JWTPayload): Promise<string> {
-  return await new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('24h')
-    .sign(JWT_SECRET)
+// Export comparePasswords function (was missing export)
+export async function comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
+  return bcrypt.compare(plainPassword, hashedPassword)
 }
 
-// Verify JWT token
-export async function verifyJWT(token: string): Promise<JWTPayload | null> {
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 12)
+}
+
+export async function generateToken(payload: JWTPayload): Promise<string> {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' })
+}
+
+// Export verifyToken function (was missing export)
+export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET)
-    return payload as JWTPayload
+    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
+    return decoded
   } catch (error) {
-    console.error('JWT verification failed:', error)
+    console.error('Token verification error:', error)
     return null
   }
 }
 
-// Get authenticated user from request
-export async function getAuthUser(request: NextRequest): Promise<User | null> {
+export async function getAuthUser(request: NextRequest): Promise<AuthUser | null> {
   try {
-    // Get token from cookies
-    const token = request.cookies.get('auth-token')?.value
-
-    if (!token) {
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return null
     }
 
-    // Verify token
-    const payload = await verifyJWT(token)
+    const token = authHeader.substring(7)
+    const payload = await verifyToken(token)
+    
     if (!payload || !payload.userId) {
       return null
     }
 
-    // Get user from Cosmic
-    const userResponse = await cosmic.objects.findOne({
+    // Fetch user from Cosmic
+    const { object: user } = await cosmic.objects.findOne({
       type: 'users',
       id: payload.userId
-    }).props(['id', 'title', 'slug', 'metadata'])
+    })
 
-    return userResponse.object as User
-  } catch (error) {
-    if (hasStatus(error) && error.status === 404) {
-      return null
+    return {
+      id: user.id,
+      email: user.metadata.email,
+      full_name: user.metadata.full_name,
+      dark_mode: user.metadata.dark_mode || false
     }
+  } catch (error) {
     console.error('Auth user fetch error:', error)
     return null
   }
 }
 
-// Hash password
-export async function hashPassword(password: string): Promise<string> {
-  const salt = await bcrypt.genSalt(12)
-  return await bcrypt.hash(password, salt)
-}
-
-// Verify password
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return await bcrypt.compare(password, hash)
-}
-
-// Find user by email
-export async function findUserByEmail(email: string): Promise<User | null> {
+export async function authenticateUser(email: string, password: string): Promise<AuthUser | null> {
   try {
+    // Find user by email
     const response = await cosmic.objects.find({
       type: 'users',
       'metadata.email': email
-    }).props(['id', 'title', 'slug', 'metadata']).limit(1)
+    }).props(['id', 'title', 'metadata'])
 
-    return response.objects[0] as User || null
-  } catch (error) {
-    if (hasStatus(error) && error.status === 404) {
+    if (!response.objects || response.objects.length === 0) {
       return null
     }
-    throw error
+
+    const user = response.objects[0]
+    
+    // Compare password
+    const isValid = await comparePasswords(password, user.metadata.password_hash)
+    
+    if (!isValid) {
+      return null
+    }
+
+    return {
+      id: user.id,
+      email: user.metadata.email,
+      full_name: user.metadata.full_name,
+      dark_mode: user.metadata.dark_mode || false
+    }
+  } catch (error) {
+    console.error('User authentication error:', error)
+    return null
   }
 }
 
-// Create user
-export async function createUser(userData: {
-  full_name: string
-  email: string
-  password: string
-}): Promise<User> {
-  const passwordHash = await hashPassword(userData.password)
-  
-  const response = await cosmic.objects.insertOne({
-    type: 'users',
-    title: userData.full_name,
-    slug: `${userData.full_name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
-    metadata: {
-      full_name: userData.full_name,
-      email: userData.email,
-      password_hash: passwordHash,
-      dark_mode: false,
-      created_at: new Date().toISOString().split('T')[0]
-    }
-  })
+export async function createUser(fullName: string, email: string, password: string): Promise<AuthUser | null> {
+  try {
+    // Check if user already exists
+    const existingResponse = await cosmic.objects.find({
+      type: 'users',
+      'metadata.email': email
+    }).props(['id'])
 
-  return response.object as User
+    if (existingResponse.objects && existingResponse.objects.length > 0) {
+      throw new Error('User already exists')
+    }
+
+    // Hash password
+    const passwordHash = await hashPassword(password)
+
+    // Create user
+    const newUser = await cosmic.objects.insertOne({
+      type: 'users',
+      title: fullName,
+      slug: `${fullName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+      metadata: {
+        full_name: fullName,
+        email,
+        password_hash: passwordHash,
+        dark_mode: false,
+        created_at: new Date().toISOString().split('T')[0]
+      }
+    })
+
+    return {
+      id: newUser.object.id,
+      email: newUser.object.metadata.email,
+      full_name: newUser.object.metadata.full_name,
+      dark_mode: newUser.object.metadata.dark_mode || false
+    }
+  } catch (error) {
+    console.error('User creation error:', error)
+    return null
+  }
 }
 
-// Set auth cookie
-export function setAuthCookie(token: string) {
-  const cookieStore = cookies()
+// Fixed: Handle Next.js 15+ cookies Promise properly
+export async function setAuthCookie(token: string): Promise<void> {
+  const cookieStore = await cookies() // Await the Promise in Next.js 15+
   cookieStore.set('auth-token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 // 24 hours
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   })
 }
 
-// Clear auth cookie
-export function clearAuthCookie() {
-  const cookieStore = cookies()
+// Fixed: Handle Next.js 15+ cookies Promise properly  
+export async function clearAuthCookie(): Promise<void> {
+  const cookieStore = await cookies() // Await the Promise in Next.js 15+
   cookieStore.set('auth-token', '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: 0
   })
+}
+
+export async function getTokenFromCookies(): Promise<string | null> {
+  const cookieStore = await cookies() // Await the Promise in Next.js 15+
+  return cookieStore.get('auth-token')?.value || null
 }
