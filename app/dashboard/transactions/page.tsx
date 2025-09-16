@@ -1,51 +1,39 @@
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, userToAuthUser } from '@/lib/auth'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
-import { Transaction, Category, User } from '@/types'
+import { Transaction, Category } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import TransactionsPageClient from '@/components/TransactionsPageClient'
+import { NextRequest } from 'next/server'
+import { headers } from 'next/headers'
 
-async function getTransactionsData() {
+async function getTransactionsData(request: NextRequest) {
   try {
-    // Get auth token from cookies
-    const cookieStore = await cookies()
-    const token = cookieStore.get('auth-token')?.value
-
-    if (!token) {
-      redirect('/login')
+    // Get authenticated user
+    const user = await getCurrentUser(request)
+    if (!user) {
+      return {
+        user: null,
+        transactions: [],
+        categories: []
+      }
     }
 
-    // Get current user
-    const authUser = await getCurrentUser(token)
-    if (!authUser) {
-      redirect('/login')
-    }
-
-    // Get full user object for DashboardLayout
-    const userResponse = await cosmic.objects.findOne({
-      type: 'users',
-      id: authUser.id
-    }).props(['id', 'title', 'slug', 'metadata'])
-
-    const user = userResponse.object as User
-
-    // Get user's transactions with category data
+    // Get transactions for the user
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',
-        'metadata.user': authUser.id 
+        'metadata.user': user.id 
       })
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
 
     const transactions = transactionsResponse.objects as Transaction[]
 
-    // Get user's categories
+    // Get categories for the user
     const categoriesResponse = await cosmic.objects
       .find({ 
         type: 'categories',
-        'metadata.user': authUser.id 
+        'metadata.user': user.id 
       })
       .props(['id', 'title', 'slug', 'metadata'])
 
@@ -57,6 +45,8 @@ async function getTransactionsData() {
       categories
     }
   } catch (error) {
+    console.error('Transactions data error:', error)
+    
     if (hasStatus(error) && error.status === 404) {
       return {
         user: null,
@@ -64,36 +54,44 @@ async function getTransactionsData() {
         categories: []
       }
     }
+    
     throw error
   }
 }
 
 export default async function TransactionsPage() {
-  const { user, transactions, categories } = await getTransactionsData()
-
-  if (!user) {
-    redirect('/login')
-  }
-
-  return (
-    <DashboardLayout user={user}>
-      <div className="space-y-grid-gap">
-        {/* Page Header */}
-        <div>
-          <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
-            Transactions
+  // Create a mock NextRequest from headers
+  const headersList = headers()
+  const request = new NextRequest('http://localhost:3000/dashboard/transactions', {
+    headers: headersList
+  })
+  
+  const data = await getTransactionsData(request)
+  
+  if (!data.user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">
+            Authentication Required
           </h1>
-          <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Manage your income and expense transactions
+          <p className="text-text-secondary-light dark:text-text-secondary-dark mb-4">
+            Please log in to access your transactions.
           </p>
         </div>
-
-        {/* Client-side transaction management */}
-        <TransactionsPageClient 
-          initialTransactions={transactions}
-          categories={categories}
-        />
       </div>
+    )
+  }
+
+  const authUser = userToAuthUser(data.user)
+
+  return (
+    <DashboardLayout user={authUser}>
+      <TransactionsPageClient
+        initialTransactions={data.transactions}
+        categories={data.categories}
+        user={authUser}
+      />
     </DashboardLayout>
   )
 }
