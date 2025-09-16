@@ -1,90 +1,106 @@
-'use client'
-
-import { useState, useEffect } from 'react'
+import { redirect } from 'next/navigation'
+import { getCurrentUser } from '@/lib/auth'
+import { cosmic, hasStatus } from '@/lib/cosmic'
+import { Category, User } from '@/types'
 import DashboardLayout from '@/components/DashboardLayout'
 import CategoryManager from '@/components/CategoryManager'
 import SettingsForm from '@/components/SettingsForm'
-import { Category, AuthUser } from '@/types'
 
-export default function SettingsPage() {
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      const token = localStorage.getItem('auth-token')
-      
-      if (!token) {
-        window.location.href = '/login'
-        return
-      }
-
-      // Load user data
-      const userResponse = await fetch('/api/user', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (userResponse.ok) {
-        const userData = await userResponse.json()
-        setUser(userData.user)
-      }
-
-      // Load categories
-      const categoriesResponse = await fetch('/api/categories')
-      if (categoriesResponse.ok) {
-        const categoriesData = await categoriesResponse.json()
-        setCategories(categoriesData.categories)
-      }
-    } catch (error) {
-      console.error('Data loading error:', error)
-    } finally {
-      setLoading(false)
+async function getSettingsData() {
+  try {
+    const authUser = await getCurrentUser()
+    
+    if (!authUser) {
+      redirect('/login')
     }
-  }
 
-  if (loading) {
-    return (
-      <DashboardLayout user={user}>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-text-secondary-light dark:text-text-secondary-dark">
-            Loading settings...
-          </div>
-        </div>
-      </DashboardLayout>
-    )
+    // Create User object from AuthUser
+    const user: User = {
+      id: authUser.id,
+      slug: `user-${authUser.id}`,
+      title: authUser.full_name,
+      type: 'users',
+      created_at: new Date().toISOString(),
+      modified_at: new Date().toISOString(),
+      metadata: {
+        full_name: authUser.full_name,
+        email: authUser.email,
+        password_hash: '',
+        dark_mode: authUser.dark_mode,
+        created_at: '2025-01-01'
+      }
+    }
+
+    // Get user's categories
+    const categoriesResponse = await cosmic.objects
+      .find({ 
+        type: 'categories',
+        'metadata.user': authUser.id 
+      })
+      .props(['id', 'title', 'slug', 'metadata'])
+      .depth(1)
+    
+    const categories = categoriesResponse.objects as Category[]
+
+    return {
+      user,
+      categories
+    }
+  } catch (error) {
+    if (hasStatus(error) && error.status === 404) {
+      const authUser = await getCurrentUser()
+      
+      if (!authUser) {
+        redirect('/login')
+      }
+
+      // Create User object from AuthUser
+      const user: User = {
+        id: authUser.id,
+        slug: `user-${authUser.id}`,
+        title: authUser.full_name,
+        type: 'users',
+        created_at: new Date().toISOString(),
+        modified_at: new Date().toISOString(),
+        metadata: {
+          full_name: authUser.full_name,
+          email: authUser.email,
+          password_hash: '',
+          dark_mode: authUser.dark_mode,
+          created_at: '2025-01-01'
+        }
+      }
+
+      return {
+        user,
+        categories: []
+      }
+    }
+    throw error
   }
+}
+
+export default async function SettingsPage() {
+  const data = await getSettingsData()
 
   return (
-    <DashboardLayout user={user}>
+    <DashboardLayout user={data.user}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
-              Settings
-            </h1>
-            <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-              Manage your account and preferences
-            </p>
-          </div>
+        <div>
+          <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
+            Settings
+          </h1>
+          <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
+            Manage your account and preferences
+          </p>
         </div>
 
-        {/* Settings Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-grid-gap">
-          {/* User Settings */}
-          <SettingsForm user={user} onUpdate={setUser} />
-          
-          {/* Category Management */}
-          <CategoryManager categories={categories} />
-        </div>
+        {/* Settings Form */}
+        <SettingsForm user={data.user} />
+
+        {/* Category Management */}
+        <CategoryManager categories={data.categories} />
       </div>
     </DashboardLayout>
   )
