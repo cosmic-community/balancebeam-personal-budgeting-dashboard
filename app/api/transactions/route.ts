@@ -1,26 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic, hasStatus } from '@/lib/cosmic'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
+import { getAuthUser } from '@/lib/auth'
 import { generateSlug } from '@/lib/utils'
 import { TransactionFormData } from '@/types'
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
-    
-    if (!token) {
+    // Get authenticated user
+    const user = await getAuthUser(request)
+    if (!user) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const payload = await verifyJWT(token)
-    if (!payload) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: 'Unauthorized - Please log in' },
         { status: 401 }
       )
     }
@@ -29,27 +19,53 @@ export async function POST(request: NextRequest) {
     const { type, amount, category, description, date } = body
 
     // Validate input
-    if (!type || !amount || !category || !date) {
+    if (!type || amount === undefined || !category || !date) {
       return NextResponse.json(
-        { error: 'All required fields must be provided' },
+        { error: 'Missing required fields: type, amount, category, date' },
+        { status: 400 }
+      )
+    }
+
+    // Validate category exists and belongs to user
+    try {
+      const { object: categoryObject } = await cosmic.objects
+        .findOne({
+          type: 'categories',
+          id: category
+        })
+        .props(['id', 'metadata'])
+
+      // Check if category belongs to the current user
+      if (categoryObject.metadata.user !== user.id) {
+        return NextResponse.json(
+          { error: 'Category does not belong to current user' },
+          { status: 403 }
+        )
+      }
+    } catch (error) {
+      console.error('Category validation error:', error)
+      return NextResponse.json(
+        { error: 'Invalid category selected' },
         { status: 400 }
       )
     }
 
     // Create transaction
+    const transactionTitle = `${type === 'income' ? '+' : '-'}$${Math.abs(amount)} - ${description || 'Transaction'}`
+    
     const newTransaction = await cosmic.objects.insertOne({
       type: 'transactions',
-      title: description || `${type} transaction`,
-      slug: generateSlug(`${type}-${payload.userId}-${Date.now()}`),
+      title: transactionTitle,
+      slug: generateSlug(`${type}-${Math.abs(amount)}-${user.id}-${Date.now()}`),
       metadata: {
-        user: payload.userId,
+        user: user.id,
         type: {
           key: type,
           value: type === 'income' ? 'Income' : 'Expense'
         },
         amount: Number(amount),
         category,
-        description,
+        description: description || '',
         date
       }
     })
@@ -66,42 +82,42 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
-    
-    if (!token) {
+    // Get authenticated user
+    const user = await getAuthUser(request)
+    if (!user) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Unauthorized - Please log in' },
         { status: 401 }
       )
     }
 
-    const payload = await verifyJWT(token)
-    if (!payload) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      )
-    }
+    // Parse query parameters
+    const { searchParams } = new URL(request.url)
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const skip = parseInt(searchParams.get('skip') || '0')
 
-    // Get transactions with category data
+    // Get transactions for the user
     const transactionsResponse = await cosmic.objects
       .find({ 
         type: 'transactions',
-        'metadata.user': payload.userId 
+        'metadata.user': user.id
       })
       .props(['id', 'title', 'slug', 'metadata'])
       .depth(1)
+      .limit(limit)
+      .skip(skip)
 
     const transactions = transactionsResponse.objects
 
-    return NextResponse.json({ transactions })
+    return NextResponse.json({ 
+      transactions,
+      total: transactionsResponse.total 
+    })
   } catch (error) {
     console.error('Transactions fetch error:', error)
     
     if (hasStatus(error) && error.status === 404) {
-      return NextResponse.json({ transactions: [] })
+      return NextResponse.json({ transactions: [], total: 0 })
     }
 
     return NextResponse.json(

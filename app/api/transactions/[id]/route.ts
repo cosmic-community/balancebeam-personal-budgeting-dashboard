@@ -1,7 +1,7 @@
 // app/api/transactions/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic } from '@/lib/cosmic'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
+import { getAuthUser } from '@/lib/auth'
 import { TransactionFormData } from '@/types'
 
 export async function PUT(
@@ -12,21 +12,11 @@ export async function PUT(
     // IMPORTANT: In Next.js 15+, params are now Promises and MUST be awaited
     const { id } = await params
 
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
-    
-    if (!token) {
+    // Get authenticated user
+    const user = await getAuthUser(request)
+    if (!user) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const payload = await verifyJWT(token)
-    if (!payload) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: 'Unauthorized - Please log in' },
         { status: 401 }
       )
     }
@@ -34,14 +24,42 @@ export async function PUT(
     const body: Partial<TransactionFormData> = await request.json()
     const { type, amount, category, description, date } = body
 
+    // Verify transaction belongs to user
+    try {
+      const { object: existingTransaction } = await cosmic.objects
+        .findOne({
+          type: 'transactions',
+          id
+        })
+        .props(['id', 'metadata'])
+
+      if (existingTransaction.metadata.user !== user.id) {
+        return NextResponse.json(
+          { error: 'Transaction does not belong to current user' },
+          { status: 403 }
+        )
+      }
+    } catch (error) {
+      return NextResponse.json(
+        { error: 'Transaction not found' },
+        { status: 404 }
+      )
+    }
+
     // Build update object with only provided fields
     const updateData: any = {}
     
-    if (type) updateData['metadata.type'] = {
-      key: type,
-      value: type === 'income' ? 'Income' : 'Expense'
+    if (type !== undefined && amount !== undefined) {
+      updateData['metadata.type'] = {
+        key: type,
+        value: type === 'income' ? 'Income' : 'Expense'
+      }
+      updateData['metadata.amount'] = Number(amount)
+      
+      // Update title based on new values
+      const transactionTitle = `${type === 'income' ? '+' : '-'}$${Math.abs(amount)} - ${description || 'Transaction'}`
+      updateData.title = transactionTitle
     }
-    if (amount !== undefined) updateData['metadata.amount'] = Number(amount)
     if (category) updateData['metadata.category'] = category
     if (description !== undefined) updateData['metadata.description'] = description
     if (date) updateData['metadata.date'] = date
@@ -67,22 +85,34 @@ export async function DELETE(
     // IMPORTANT: In Next.js 15+, params are now Promises and MUST be awaited
     const { id } = await params
 
-    // Verify authentication
-    const authHeader = request.headers.get('authorization')
-    const token = extractTokenFromHeader(authHeader)
-    
-    if (!token) {
+    // Get authenticated user
+    const user = await getAuthUser(request)
+    if (!user) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Unauthorized - Please log in' },
         { status: 401 }
       )
     }
 
-    const payload = await verifyJWT(token)
-    if (!payload) {
+    // Verify transaction belongs to user
+    try {
+      const { object: existingTransaction } = await cosmic.objects
+        .findOne({
+          type: 'transactions',
+          id
+        })
+        .props(['id', 'metadata'])
+
+      if (existingTransaction.metadata.user !== user.id) {
+        return NextResponse.json(
+          { error: 'Transaction does not belong to current user' },
+          { status: 403 }
+        )
+      }
+    } catch (error) {
       return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
+        { error: 'Transaction not found' },
+        { status: 404 }
       )
     }
 
