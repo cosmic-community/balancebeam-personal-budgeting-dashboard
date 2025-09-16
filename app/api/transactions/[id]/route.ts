@@ -37,17 +37,14 @@ export async function PUT(
     // Build update object with only provided fields
     const updateData: any = {}
     
-    if (type) {
-      updateData['metadata.type'] = {
-        key: type,
-        value: type === 'income' ? 'Income' : 'Expense'
-      }
+    if (type) updateData['metadata.type'] = {
+      key: type,
+      value: type === 'income' ? 'Income' : 'Expense'
     }
     if (amount !== undefined) updateData['metadata.amount'] = Number(amount)
     if (category) updateData['metadata.category'] = category
     if (description !== undefined) updateData['metadata.description'] = description
     if (date) updateData['metadata.date'] = date
-    if (description) updateData.title = description
 
     // Update transaction
     const updatedTransaction = await cosmic.objects.updateOne(id, updateData)

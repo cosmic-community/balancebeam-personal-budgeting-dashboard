@@ -1,91 +1,89 @@
-import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
-import { verifyJWT, extractTokenFromHeader } from '@/lib/auth'
-import { cosmic, hasStatus } from '@/lib/cosmic'
-import { User, Category } from '@/types'
+'use client'
+
+import { useState, useEffect } from 'react'
 import DashboardLayout from '@/components/DashboardLayout'
-import SettingsForm from '@/components/SettingsForm'
 import CategoryManager from '@/components/CategoryManager'
+import SettingsForm from '@/components/SettingsForm'
+import { Category, AuthUser } from '@/types'
 
-async function getSettingsData(userId: string) {
-  try {
-    // Get user data
-    const userResponse = await cosmic.objects.findOne({
-      type: 'users',
-      id: userId
-    })
-    const user = userResponse.object as User
+export default function SettingsPage() {
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loading, setLoading] = useState(true)
 
-    // Get user's categories
-    const categoriesResponse = await cosmic.objects
-      .find({ 
-        type: 'categories',
-        'metadata.user': userId 
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const token = localStorage.getItem('auth-token')
+      
+      if (!token) {
+        window.location.href = '/login'
+        return
+      }
+
+      // Load user data
+      const userResponse = await fetch('/api/user', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       })
-      .props(['id', 'title', 'slug', 'metadata'])
-      .depth(1)
-    
-    const categories = categoriesResponse.objects as Category[]
 
-    return { user, categories }
-  } catch (error) {
-    if (hasStatus(error) && error.status === 404) {
-      return { user: null, categories: [] }
+      if (userResponse.ok) {
+        const userData = await userResponse.json()
+        setUser(userData.user)
+      }
+
+      // Load categories
+      const categoriesResponse = await fetch('/api/categories')
+      if (categoriesResponse.ok) {
+        const categoriesData = await categoriesResponse.json()
+        setCategories(categoriesData.categories)
+      }
+    } catch (error) {
+      console.error('Data loading error:', error)
+    } finally {
+      setLoading(false)
     }
-    throw error
-  }
-}
-
-export default async function SettingsPage() {
-  const headersList = await headers()
-  const authHeader = headersList.get('authorization') || headersList.get('cookie')
-  
-  // Extract token from cookie if present
-  let token: string | null = extractTokenFromHeader(authHeader)
-  if (!token && authHeader?.includes('auth-token=')) {
-    token = authHeader.split('auth-token=')[1]?.split(';')[0] || null
   }
 
-  if (!token) {
-    redirect('/login')
-  }
-
-  const payload = await verifyJWT(token)
-  if (!payload) {
-    redirect('/login')
-  }
-
-  const data = await getSettingsData(payload.userId)
-  
-  if (!data.user) {
-    redirect('/login')
-  }
-
-  // Convert User to AuthUser format expected by SettingsForm
-  const authUser = {
-    id: data.user.id,
-    email: data.user.metadata.email,
-    full_name: data.user.metadata.full_name,
-    dark_mode: data.user.metadata.dark_mode || false
+  if (loading) {
+    return (
+      <DashboardLayout user={user}>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-text-secondary-light dark:text-text-secondary-dark">
+            Loading settings...
+          </div>
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (
-    <DashboardLayout user={data.user}>
+    <DashboardLayout user={user}>
       <div className="space-y-grid-gap">
         {/* Page Header */}
-        <div>
-          <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
-            Settings
-          </h1>
-          <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
-            Manage your account settings and preferences
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-heading md:text-3xl font-bold text-text-primary-light dark:text-text-primary-dark">
+              Settings
+            </h1>
+            <p className="text-body text-text-secondary-light dark:text-text-secondary-dark mt-1">
+              Manage your account and preferences
+            </p>
+          </div>
         </div>
 
-        {/* Settings Form and Category Manager */}
+        {/* Settings Content */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-grid-gap">
-          <SettingsForm user={authUser} onUpdate={() => {}} />
-          <CategoryManager categories={data.categories} />
+          {/* User Settings */}
+          <SettingsForm user={user} onUpdate={setUser} />
+          
+          {/* Category Management */}
+          <CategoryManager categories={categories} />
         </div>
       </div>
     </DashboardLayout>

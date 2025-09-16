@@ -5,7 +5,6 @@ import bcrypt from 'bcryptjs'
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -31,10 +30,7 @@ export async function GET(request: NextRequest) {
     })
 
     const user = userResponse.object
-    
-    // Return user data without password hash
-    const { password_hash, ...userWithoutPassword } = user.metadata
-    
+
     return NextResponse.json({
       user: {
         id: user.id,
@@ -54,7 +50,6 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    // Verify authentication
     const authHeader = request.headers.get('authorization')
     const token = extractTokenFromHeader(authHeader)
     
@@ -74,45 +69,21 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { full_name, email, dark_mode, current_password, new_password } = body
+    const { full_name, email, dark_mode } = body
 
     // Build update object with only provided fields
     const updateData: any = {}
     
-    if (full_name) updateData['metadata.full_name'] = full_name
-    if (email) updateData['metadata.email'] = email
-    if (typeof dark_mode === 'boolean') updateData['metadata.dark_mode'] = dark_mode
-
-    // Handle password change
-    if (new_password && current_password) {
-      // Get current user data to verify password
-      const userResponse = await cosmic.objects.findOne({
-        type: 'users',
-        id: payload.userId
-      })
-
-      const user = userResponse.object
-      const passwordMatch = await bcrypt.compare(current_password, user.metadata.password_hash)
-      
-      if (!passwordMatch) {
-        return NextResponse.json(
-          { error: 'Current password is incorrect' },
-          { status: 400 }
-        )
-      }
-
-      // Hash new password
-      const saltRounds = 12
-      const hashedPassword = await bcrypt.hash(new_password, saltRounds)
-      updateData['metadata.password_hash'] = hashedPassword
+    if (full_name) {
+      updateData.title = full_name
+      updateData['metadata.full_name'] = full_name
     }
+    if (email) updateData['metadata.email'] = email
+    if (dark_mode !== undefined) updateData['metadata.dark_mode'] = dark_mode
 
     // Update user
     const updatedUser = await cosmic.objects.updateOne(payload.userId, updateData)
-    
-    // Return user data without password hash
-    const { password_hash, ...userWithoutPassword } = updatedUser.object.metadata
-    
+
     return NextResponse.json({
       user: {
         id: updatedUser.object.id,

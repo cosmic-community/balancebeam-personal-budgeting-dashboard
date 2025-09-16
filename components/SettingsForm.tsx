@@ -3,17 +3,17 @@
 import { useState } from 'react'
 import { AuthUser } from '@/types'
 
-export interface SettingsFormProps {
-  user: AuthUser
-  onUpdate?: () => void
+interface SettingsFormProps {
+  user: AuthUser | null
+  onUpdate?: (user: AuthUser) => void
 }
 
 export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    full_name: user.full_name,
-    email: user.email,
-    dark_mode: user.dark_mode
+    full_name: user?.full_name || '',
+    email: user?.email || '',
+    dark_mode: user?.dark_mode || false
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,11 +32,11 @@ export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
       })
 
       if (response.ok) {
-        onUpdate?.()
+        const data = await response.json()
+        onUpdate?.(data.user)
         alert('Settings updated successfully!')
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update settings')
+        throw new Error('Failed to update settings')
       }
     } catch (error) {
       console.error('Settings update error:', error)
@@ -46,12 +46,29 @@ export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
     }
   }
 
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('auth-token')
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      localStorage.removeItem('auth-token')
+      window.location.href = '/login'
+    }
+  }
+
   return (
     <div className="card">
       <div className="card-header">
         <div>
           <h3 className="card-title">Account Settings</h3>
-          <p className="card-subtitle">Update your account information and preferences</p>
+          <p className="card-subtitle">Update your profile information</p>
         </div>
       </div>
       
@@ -82,33 +99,38 @@ export default function SettingsForm({ user, onUpdate }: SettingsFormProps) {
           />
         </div>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
-              Dark Mode
-            </label>
-            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-              Enable dark theme for better viewing in low light
-            </p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={formData.dark_mode}
-              onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 dark:peer-focus:ring-primary/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+        <div className="flex items-center space-x-3">
+          <input
+            type="checkbox"
+            id="dark_mode"
+            checked={formData.dark_mode}
+            onChange={(e) => setFormData(prev => ({ ...prev, dark_mode: e.target.checked }))}
+            className="w-4 h-4 text-primary"
+          />
+          <label 
+            htmlFor="dark_mode"
+            className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark"
+          >
+            Enable Dark Mode
           </label>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full btn-primary"
-        >
-          {loading ? 'Saving...' : 'Save Changes'}
-        </button>
+        <div className="flex gap-3 pt-4">
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex-1 btn-primary"
+          >
+            {loading ? 'Updating...' : 'Update Settings'}
+          </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="px-6 btn-secondary text-error hover:bg-error hover:text-white"
+          >
+            Logout
+          </button>
+        </div>
       </form>
     </div>
   )
